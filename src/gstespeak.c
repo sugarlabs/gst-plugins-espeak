@@ -2,7 +2,7 @@
  * GStreamer
  * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
  * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
- * Copyright (C) 2009  <<user@hostname.org>>
+ * Copyright (C) 2009 Aleksey S. Lim <alsroot@member.fsf.org>
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -63,16 +63,10 @@
 #include <gst/gst.h>
 
 #include "gstespeak.h"
+#include "espeak.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_espeak_debug);
 #define GST_CAT_DEFAULT gst_espeak_debug
-
-/* Filter signals and args */
-enum
-{
-  /* FILL ME */
-  LAST_SIGNAL
-};
 
 enum
 {
@@ -80,32 +74,30 @@ enum
   PROP_SILENT
 };
 
-/* the capabilities of the inputs and outputs.
- *
- * describe the real formats here.
- */
-static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE ("sink",
-    GST_PAD_SINK,
-    GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("ANY")
-    );
-
-static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
+static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE (
+    "src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("ANY")
     );
 
-GST_BOILERPLATE (GstEspeak, gst_espeak, GstElement,
-    GST_TYPE_ELEMENT);
+GST_BOILERPLATE (GstEspeak, gst_espeak, GstBaseSrc, GST_TYPE_BASE_SRC);
+
+static GstFlowReturn gst_espeak_src_create (GstBaseSrc*,
+    guint64, guint, GstBuffer**);
+static gboolean gst_espeak_src_start (GstBaseSrc*);
+static gboolean gst_espeak_src_stop (GstBaseSrc*);
+static gboolean gst_espeak_src_is_seekable (GstBaseSrc*);
+static gboolean gst_espeak_src_unlock (GstBaseSrc*);
+static gboolean gst_espeak_src_unlock_stop (GstBaseSrc*);
+static gboolean gst_espeak_src_do_seek (GstBaseSrc*, GstSegment*);
+static gboolean gst_espeak_src_check_get_range (GstBaseSrc*);
+static gboolean gst_espeak_src_do_get_size (GstBaseSrc*, guint64*);
 
 static void gst_espeak_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
 static void gst_espeak_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec);
-
-static gboolean gst_espeak_set_caps (GstPad * pad, GstCaps * caps);
-static GstFlowReturn gst_espeak_chain (GstPad * pad, GstBuffer * buf);
 
 /* GObject vmethod implementations */
 
@@ -122,19 +114,25 @@ gst_espeak_base_init (gpointer gclass)
 
   gst_element_class_add_pad_template (element_class,
       gst_static_pad_template_get (&src_factory));
-  gst_element_class_add_pad_template (element_class,
-      gst_static_pad_template_get (&sink_factory));
 }
 
 /* initialize the espeak's class */
 static void
 gst_espeak_class_init (GstEspeakClass * klass)
 {
-  GObjectClass *gobject_class;
-  GstElementClass *gstelement_class;
+  GObjectClass *gobject_class = (GObjectClass *) klass;
+  GstBaseSrcClass *basesrc_class = (GstBaseSrcClass *) klass;
 
-  gobject_class = (GObjectClass *) klass;
-  gstelement_class = (GstElementClass *) klass;
+  basesrc_class->create = gst_espeak_src_create;
+  basesrc_class->start = gst_espeak_src_start;
+  basesrc_class->stop = gst_espeak_src_stop;
+  basesrc_class->stop = gst_espeak_src_stop;
+  basesrc_class->is_seekable = gst_espeak_src_is_seekable;
+  basesrc_class->unlock = gst_espeak_src_unlock;
+  basesrc_class->unlock_stop = gst_espeak_src_unlock_stop;
+  basesrc_class->do_seek = gst_espeak_src_do_seek;
+  basesrc_class->check_get_range = gst_espeak_src_check_get_range;
+  basesrc_class->get_size = gst_espeak_src_do_get_size;
 
   gobject_class->set_property = gst_espeak_set_property;
   gobject_class->get_property = gst_espeak_get_property;
@@ -150,24 +148,10 @@ gst_espeak_class_init (GstEspeakClass * klass)
  * initialize instance structure
  */
 static void
-gst_espeak_init (GstEspeak * filter,
+gst_espeak_init (GstEspeak * self,
     GstEspeakClass * gclass)
 {
-  filter->sinkpad = gst_pad_new_from_static_template (&sink_factory, "sink");
-  gst_pad_set_setcaps_function (filter->sinkpad,
-                                GST_DEBUG_FUNCPTR(gst_espeak_set_caps));
-  gst_pad_set_getcaps_function (filter->sinkpad,
-                                GST_DEBUG_FUNCPTR(gst_pad_proxy_getcaps));
-  gst_pad_set_chain_function (filter->sinkpad,
-                              GST_DEBUG_FUNCPTR(gst_espeak_chain));
-
-  filter->srcpad = gst_pad_new_from_static_template (&src_factory, "src");
-  gst_pad_set_getcaps_function (filter->srcpad,
-                                GST_DEBUG_FUNCPTR(gst_pad_proxy_getcaps));
-
-  gst_element_add_pad (GST_ELEMENT (filter), filter->sinkpad);
-  gst_element_add_pad (GST_ELEMENT (filter), filter->srcpad);
-  filter->silent = FALSE;
+    self->speak = espeak_new();
 }
 
 static void
@@ -204,38 +188,6 @@ gst_espeak_get_property (GObject * object, guint prop_id,
 
 /* GstElement vmethod implementations */
 
-/* this function handles the link with other elements */
-static gboolean
-gst_espeak_set_caps (GstPad * pad, GstCaps * caps)
-{
-  GstEspeak *filter;
-  GstPad *otherpad;
-
-  filter = GST_ESPEAK (gst_pad_get_parent (pad));
-  otherpad = (pad == filter->srcpad) ? filter->sinkpad : filter->srcpad;
-  gst_object_unref (filter);
-
-  return gst_pad_set_caps (otherpad, caps);
-}
-
-/* chain function
- * this function does the actual processing
- */
-static GstFlowReturn
-gst_espeak_chain (GstPad * pad, GstBuffer * buf)
-{
-  GstEspeak *filter;
-
-  filter = GST_ESPEAK (GST_OBJECT_PARENT (pad));
-
-  if (filter->silent == FALSE)
-    g_print ("I'm plugged, therefore I'm in.\n");
-
-  /* just push out the incoming buffer without touching it */
-  return gst_pad_push (filter->srcpad, buf);
-}
-
-
 /* entry point to initialize the plug-in
  * initialize the plug-in itself
  * register the element factories and other features
@@ -253,6 +205,72 @@ espeak_init (GstPlugin * espeak)
   return gst_element_register (espeak, "espeak", GST_RANK_NONE,
       GST_TYPE_ESPEAK);
 }
+
+/******************************************************************************/
+
+static GstFlowReturn
+gst_espeak_src_create (GstBaseSrc * self_, guint64 offset, guint size,
+        GstBuffer ** buf)
+{
+    GstEspeak *self = (GstEspeak*)self_;
+    *buf = gst_buffer_new();
+    GST_BUFFER_DATA (*buf) = espeak_hear(self->speak, offset, &size);
+    GST_BUFFER_SIZE (*buf) = size;
+    return size == 0 ? GST_FLOW_UNEXPECTED : GST_FLOW_OK;
+}
+
+static gboolean
+gst_espeak_src_start (GstBaseSrc * self_)
+{
+    GstEspeak *self = (GstEspeak*)self_;
+    GstState status;
+    gst_element_get_state((GstElement*)self, NULL, &status, 0);
+
+    if (status == GST_STATE_PAUSED)
+        return espeak_say(self->speak, "Aa");
+
+    return TRUE;
+}
+
+static gboolean
+gst_espeak_src_stop (GstBaseSrc * self)
+{
+    return TRUE;
+}
+
+static gboolean
+gst_espeak_src_is_seekable (GstBaseSrc * src)
+{
+    return FALSE;
+}
+
+static gboolean gst_espeak_src_unlock (GstBaseSrc * bsrc)
+{
+    return TRUE;
+}
+
+static gboolean gst_espeak_src_unlock_stop (GstBaseSrc * bsrc)
+{
+    return TRUE;
+}
+
+static gboolean gst_espeak_src_do_seek (GstBaseSrc * src, GstSegment * segment)
+{
+    return TRUE;
+}
+
+static gboolean gst_espeak_src_check_get_range (GstBaseSrc * src)
+{
+    return FALSE;
+}
+
+static gboolean gst_espeak_src_do_get_size (GstBaseSrc * src, guint64 * size)
+{
+    *size = -1;
+    return TRUE;
+}
+
+/******************************************************************************/
 
 /* gstreamer looks for this structure to register espeaks
  *

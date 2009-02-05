@@ -5,5 +5,19 @@ config.log
 config.status
 configure
 libtool
+stamp-h1
+*.la
+config.h
+*.in
+Makefile
+config.guess
+config.sub
+depcomp
+ltmain.sh
+install-sh
+missing
+.deps
+.libs
+*.lo
 
 gst-plugin-*.tar.*

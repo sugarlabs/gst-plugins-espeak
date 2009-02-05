@@ -2,7 +2,7 @@
  * GStreamer
  * Copyright (C) 2005 Thomas Vander Stichele <thomas@apestaart.org>
  * Copyright (C) 2005 Ronald S. Bultje <rbultje@ronald.bitfreak.net>
- * Copyright (C) 2009  <<user@hostname.org>>
+ * Copyright (C) 2009 Aleksey S. Lim <alsroot@member.fsf.org>
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -47,6 +47,7 @@
 #define __GST_ESPEAK_H__
 
 #include <gst/gst.h>
+#include <gst/audio/gstaudiosrc.h>
 
 G_BEGIN_DECLS
 
@@ -64,19 +65,18 @@ G_BEGIN_DECLS
 
 typedef struct _GstEspeak      GstEspeak;
 typedef struct _GstEspeakClass GstEspeakClass;
+struct Espeak;
 
 struct _GstEspeak
 {
-  GstElement element;
-
-  GstPad *sinkpad, *srcpad;
-
+  GstAudioSrc parent;
+  struct Espeak *speak;
   gboolean silent;
 };
 
 struct _GstEspeakClass 
 {
-  GstElementClass parent_class;
+  GstAudioSrcClass parent_class;
 };
 
 GType gst_espeak_get_type (void);
