@@ -94,6 +94,7 @@ static gboolean gst_espeak_src_do_seek (GstBaseSrc*, GstSegment*);
 static gboolean gst_espeak_src_check_get_range (GstBaseSrc*);
 static gboolean gst_espeak_src_do_get_size (GstBaseSrc*, guint64*);
 
+static void gst_espeak_src_dispose (GObject * gobject);
 static void gst_espeak_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec);
 static void gst_espeak_get_property (GObject * object, guint prop_id,
@@ -120,26 +121,27 @@ gst_espeak_base_init (gpointer gclass)
 static void
 gst_espeak_class_init (GstEspeakClass * klass)
 {
-  GObjectClass *gobject_class = (GObjectClass *) klass;
-  GstBaseSrcClass *basesrc_class = (GstBaseSrcClass *) klass;
+    GObjectClass *gobject_class = (GObjectClass *) klass;
+    GstBaseSrcClass *basesrc_class = (GstBaseSrcClass *) klass;
 
-  basesrc_class->create = gst_espeak_src_create;
-  basesrc_class->start = gst_espeak_src_start;
-  basesrc_class->stop = gst_espeak_src_stop;
-  basesrc_class->stop = gst_espeak_src_stop;
-  basesrc_class->is_seekable = gst_espeak_src_is_seekable;
-  basesrc_class->unlock = gst_espeak_src_unlock;
-  basesrc_class->unlock_stop = gst_espeak_src_unlock_stop;
-  basesrc_class->do_seek = gst_espeak_src_do_seek;
-  basesrc_class->check_get_range = gst_espeak_src_check_get_range;
-  basesrc_class->get_size = gst_espeak_src_do_get_size;
+    basesrc_class->create = gst_espeak_src_create;
+    basesrc_class->start = gst_espeak_src_start;
+    basesrc_class->stop = gst_espeak_src_stop;
+    basesrc_class->stop = gst_espeak_src_stop;
+    basesrc_class->is_seekable = gst_espeak_src_is_seekable;
+    basesrc_class->unlock = gst_espeak_src_unlock;
+    basesrc_class->unlock_stop = gst_espeak_src_unlock_stop;
+    basesrc_class->do_seek = gst_espeak_src_do_seek;
+    basesrc_class->check_get_range = gst_espeak_src_check_get_range;
+    basesrc_class->get_size = gst_espeak_src_do_get_size;
 
-  gobject_class->set_property = gst_espeak_set_property;
-  gobject_class->get_property = gst_espeak_get_property;
+    gobject_class->dispose = gst_espeak_src_dispose;
+    gobject_class->set_property = gst_espeak_set_property;
+    gobject_class->get_property = gst_espeak_get_property;
 
-  g_object_class_install_property (gobject_class, PROP_SILENT,
-      g_param_spec_boolean ("silent", "Silent", "Produce verbose output ?",
-          FALSE, G_PARAM_READWRITE));
+    g_object_class_install_property (gobject_class, PROP_SILENT,
+        g_param_spec_boolean ("silent", "Silent", "Produce verbose output ?",
+            FALSE, G_PARAM_READWRITE));
 }
 
 /* initialize the new element
@@ -152,6 +154,16 @@ gst_espeak_init (GstEspeak * self,
     GstEspeakClass * gclass)
 {
     self->speak = espeak_new();
+}
+
+static void
+gst_espeak_src_dispose(GObject * self_)
+{
+    GstEspeak *self = (GstEspeak*)self_;
+    espeak_unref(self->speak);
+    self->speak = NULL;
+
+    G_OBJECT_CLASS(parent_class)->dispose(self_);
 }
 
 static void

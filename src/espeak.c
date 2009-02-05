@@ -142,7 +142,8 @@ espeak_hear(struct Espeak *es, goffset offset, guint *size)
 void
 espeak_unref(struct Espeak *es)
 {
-    g_free(es->buffer);
+    g_output_stream_close(es->buffer, NULL, NULL);
+    g_object_unref(es->buffer);
     es->buffer = 0;
     g_free(es);
 }
