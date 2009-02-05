@@ -49,7 +49,8 @@
 struct Espeak;
 
 struct Espeak* espeak_new();
-gboolean espeak_say(struct Espeak*, const gchar *text);
+gboolean espeak_say(struct Espeak*, const gchar *text, guint pitch,
+        guint rate);
 gpointer espeak_hear(struct Espeak*, goffset offset, guint *size);
 void espeak_unref(struct Espeak*);
 

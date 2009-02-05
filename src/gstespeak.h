@@ -73,7 +73,8 @@ struct _GstEspeak
     struct Espeak *speak;
     gchar *text;
     gchar *uri;
-    gboolean silent;
+    guint pitch;
+    guint rate;
 };
 
 struct _GstEspeakClass 

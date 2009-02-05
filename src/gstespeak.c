@@ -71,9 +71,10 @@ GST_DEBUG_CATEGORY_STATIC (gst_espeak_debug);
 
 enum
 {
-  PROP_0,
-  PROP_TEXT,
-  PROP_SILENT
+    PROP_0,
+    PROP_TEXT,
+    PROP_PITCH,
+    PROP_RATE
 };
 
 static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE (
@@ -146,10 +147,15 @@ gst_espeak_class_init (GstEspeakClass * klass)
             g_param_spec_string("text", "Text",
                 "Text to pronounce", NULL,
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-    g_object_class_install_property (gobject_class, PROP_SILENT,
-            g_param_spec_boolean("silent", "Silent",
-                "Produce verbose output ?",
-                FALSE, G_PARAM_READWRITE));
+    g_object_class_install_property(gobject_class, PROP_PITCH,
+            g_param_spec_uint("pitch", "Pitch adjustment",
+                "Pitch adjustment", 0, 99, 50,
+                G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+    g_object_class_install_property(gobject_class, PROP_RATE,
+            g_param_spec_uint("rate", "Speed in words per minute",
+                "Speed in words per minute", 80, 390, 170,
+                G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
 }
 
 /* initialize the new element
@@ -164,6 +170,8 @@ gst_espeak_init (GstEspeak * self,
     self->text = NULL;
     self->uri = NULL;
     self->speak = espeak_new();
+    self->pitch = 50;
+    self->rate = 170;
 }
 
 static void
@@ -223,8 +231,11 @@ gst_espeak_set_property (GObject *object, guint prop_id,
         case PROP_TEXT:
             gst_espeak_set_text(self, g_value_get_string(value));
             break;
-        case PROP_SILENT:
-            self->silent = g_value_get_boolean (value);
+        case PROP_PITCH:
+            self->pitch = g_value_get_uint(value);
+            break;
+        case PROP_RATE:
+            self->rate = g_value_get_uint(value);
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -242,8 +253,11 @@ gst_espeak_get_property (GObject * object, guint prop_id,
         case PROP_TEXT:
             g_value_set_string(value, self->text);
             break;
-        case PROP_SILENT:
-            g_value_set_boolean (value, self->silent);
+        case PROP_PITCH:
+            g_value_set_uint(value, self->pitch);
+            break;
+        case PROP_RATE:
+            g_value_set_uint(value, self->rate);
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -272,7 +286,7 @@ gst_espeak_start (GstBaseSrc * self_)
     if (self->text == NULL || self->text[0] == 0)
         return FALSE;
 
-    return espeak_say(self->speak, self->text);
+    return espeak_say(self->speak, self->text, self->pitch, self->rate);
 }
 
 static gboolean

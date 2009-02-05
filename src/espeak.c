@@ -61,7 +61,7 @@ static unsigned char wave_hdr[44] = {
 
 static GMutex *mutex = NULL;
 static GOutputStream *buffer = NULL;
-static gint rate = 0;
+static gint sample_rate = 0;
 
 static gint
 read_cb(short * wav, int numsamples, espeak_EVENT * events)
@@ -82,12 +82,12 @@ espeak_new()
 
     if (g_once_init_enter(&initialized))
     {
-        rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 4096, NULL, 0);
+        sample_rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 4096, NULL, 0);
         espeak_SetSynthCallback(read_cb);
         mutex = g_mutex_new();
     }
 
-    if (rate == EE_INTERNAL_ERROR)
+    if (sample_rate == EE_INTERNAL_ERROR)
         return NULL;
 
     struct Espeak *es = g_new(struct Espeak, 1);
@@ -97,7 +97,7 @@ espeak_new()
 }
 
 gboolean
-espeak_say(struct Espeak *es, const gchar *text)
+espeak_say(struct Espeak *es, const gchar *text, guint pitch, guint rate)
 {
     void write4bytes(GOutputStream *buffer, gint value)
     {
@@ -114,12 +114,14 @@ espeak_say(struct Espeak *es, const gchar *text)
     g_seekable_seek((GSeekable*)es->buffer, 0, G_SEEK_SET, NULL, NULL);
 
     g_output_stream_write(es->buffer, wave_hdr, 24, NULL, NULL);
-    write4bytes(es->buffer, rate);
-    write4bytes(es->buffer, rate * 2);
+    write4bytes(es->buffer, sample_rate);
+    write4bytes(es->buffer, sample_rate * 2);
     g_output_stream_write(es->buffer, wave_hdr+32, 12, NULL, NULL);
 
     g_mutex_lock(mutex);
     buffer = es->buffer;
+    espeak_SetParameter(espeakPITCH, pitch, 0);
+    espeak_SetParameter(espeakRATE, rate, 0);
     gint status = espeak_Synth(text, strlen(text), 0, POS_CHARACTER, 0,
                 espeakCHARS_AUTO, NULL, NULL);
     buffer = NULL;
