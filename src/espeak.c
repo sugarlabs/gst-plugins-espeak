@@ -43,6 +43,7 @@
  * Boston, MA 02111-1307, USA.
  */
 
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <glib.h>
@@ -59,7 +60,7 @@ static unsigned char wave_hdr[44] = {
     0x10,0,0,0,1,0,1,0,  9,0x3d,0,0,0x12,0x7a,0,0,
     2,0,0x10,0,'d','a','t','a',  0x00,0xf0,0xff,0x7f};
 
-static GMutex *mutex = NULL;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static GOutputStream *buffer = NULL;
 static gint sample_rate = 0;
 
@@ -78,14 +79,16 @@ read_cb(short * wav, int numsamples, espeak_EVENT * events)
 struct Espeak*
 espeak_new()
 {
-    static gsize initialized = 0;
+    static volatile gsize initialized = 0;
 
-    if (g_once_init_enter(&initialized))
+    pthread_mutex_lock(&mutex);
+    if (initialized == 0)
     {
+        ++initialized;
         sample_rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 4096, NULL, 0);
         espeak_SetSynthCallback(read_cb);
-        mutex = g_mutex_new();
     }
+    pthread_mutex_unlock(&mutex);
 
     if (sample_rate == EE_INTERNAL_ERROR)
         return NULL;
@@ -118,14 +121,14 @@ espeak_say(struct Espeak *es, const gchar *text, guint pitch, guint rate)
     write4bytes(es->buffer, sample_rate * 2);
     g_output_stream_write(es->buffer, wave_hdr+32, 12, NULL, NULL);
 
-    g_mutex_lock(mutex);
+    pthread_mutex_lock(&mutex);
     buffer = es->buffer;
     espeak_SetParameter(espeakPITCH, pitch, 0);
     espeak_SetParameter(espeakRATE, rate, 0);
     gint status = espeak_Synth(text, strlen(text), 0, POS_CHARACTER, 0,
                 espeakCHARS_AUTO, NULL, NULL);
     buffer = NULL;
-    g_mutex_unlock(mutex);
+    pthread_mutex_unlock(&mutex);
 
     return status == EE_OK;
 }
