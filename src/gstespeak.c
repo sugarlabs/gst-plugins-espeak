@@ -46,12 +46,12 @@
 /**
  * SECTION:element-espeak
  *
- * FIXME:Describe espeak here.
+ * Use espeak as a sound source.
  *
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch -v -m fakesrc ! espeak ! fakesink silent=TRUE
+ * gst-launch-0.10 espeak text="Hello world" pitch=99 rate=300 lang=default ! wavparse ! alsasink
  * ]|
  * </refsect2>
  */
