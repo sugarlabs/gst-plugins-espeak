@@ -63,6 +63,7 @@ static unsigned char wave_hdr[44] = {
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static GOutputStream *buffer = NULL;
 static gint sample_rate = 0;
+static const espeak_VOICE **langs = NULL;
 
 static gint
 read_cb(short * wav, int numsamples, espeak_EVENT * events)
@@ -76,8 +77,8 @@ read_cb(short * wav, int numsamples, espeak_EVENT * events)
     return 0;
 }
 
-struct Espeak*
-espeak_new()
+static void
+init()
 {
     static volatile gsize initialized = 0;
 
@@ -87,8 +88,15 @@ espeak_new()
         ++initialized;
         sample_rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 4096, NULL, 0);
         espeak_SetSynthCallback(read_cb);
+        langs = espeak_ListVoices(NULL);
     }
     pthread_mutex_unlock(&mutex);
+}
+
+struct Espeak*
+espeak_new()
+{
+    init();
 
     if (sample_rate == EE_INTERNAL_ERROR)
         return NULL;
@@ -99,8 +107,25 @@ espeak_new()
     return es;
 }
 
+gchar**
+espeak_langs()
+{
+    gsize count = 0;
+    const espeak_VOICE **i;
+    char **j, **out;
+
+    init();
+
+    for (i = langs; *i; ++i) ++count;
+    out = j = g_new0(gchar*, count); 
+    for (i = langs; *i; ++i) *j++ = g_strdup((*i)->name);
+
+    return out;
+}
+
 gboolean
-espeak_say(struct Espeak *es, const gchar *text, guint pitch, guint rate)
+espeak_say(struct Espeak *es, const gchar *text, const gchar *lang,
+        guint pitch, guint rate)
 {
     void write4bytes(GOutputStream *buffer, gint value)
     {
@@ -125,6 +150,7 @@ espeak_say(struct Espeak *es, const gchar *text, guint pitch, guint rate)
     buffer = es->buffer;
     espeak_SetParameter(espeakPITCH, pitch, 0);
     espeak_SetParameter(espeakRATE, rate, 0);
+    espeak_SetVoiceByName(lang);
     gint status = espeak_Synth(text, strlen(text), 0, POS_CHARACTER, 0,
                 espeakCHARS_AUTO, NULL, NULL);
     buffer = NULL;
