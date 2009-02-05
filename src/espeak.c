@@ -127,23 +127,9 @@ gboolean
 espeak_say(struct Espeak *es, const gchar *text, const gchar *lang,
         guint pitch, guint rate)
 {
-    void write4bytes(GOutputStream *buffer, gint value)
-    {
-        gint i, byte;
-
-        for(i = 4; i--;)
-        {
-            byte = value & 0xff;
-            g_output_stream_write(buffer, &byte, 1, NULL, NULL);
-            value >>= 8;
-        }
-    }
-
-    g_seekable_seek((GSeekable*)es->buffer, 0, G_SEEK_SET, NULL, NULL);
-
+    g_seekable_seek(G_SEEKABLE(es->buffer), 0, G_SEEK_SET, NULL, NULL);
     g_output_stream_write(es->buffer, wave_hdr, 24, NULL, NULL);
-    write4bytes(es->buffer, sample_rate);
-    write4bytes(es->buffer, sample_rate * 2);
+    g_seekable_seek(G_SEEKABLE(es->buffer), 8, G_SEEK_CUR, NULL, NULL);
     g_output_stream_write(es->buffer, wave_hdr+32, 12, NULL, NULL);
 
     pthread_mutex_lock(&mutex);
@@ -151,12 +137,35 @@ espeak_say(struct Espeak *es, const gchar *text, const gchar *lang,
     espeak_SetParameter(espeakPITCH, pitch, 0);
     espeak_SetParameter(espeakRATE, rate, 0);
     espeak_SetVoiceByName(lang);
-    gint status = espeak_Synth(text, strlen(text), 0, POS_CHARACTER, 0,
+    gint status = espeak_Synth(text, strlen(text)+1, 0, POS_WORD, 0,
                 espeakCHARS_AUTO, NULL, NULL);
     buffer = NULL;
     pthread_mutex_unlock(&mutex);
 
-    return status == EE_OK;
+    if (status != EE_OK)
+        return FALSE;
+
+    void write4bytes(unsigned char *ptr, int value)
+    {
+        int ix;
+
+        for(ix=0; ix<4; ix++)
+        {
+            *ptr++ = value & 0xff;
+            value = value >> 8;
+        }
+    }
+
+    GMemoryOutputStream *mb = G_MEMORY_OUTPUT_STREAM(es->buffer);
+    unsigned char *ptr = g_memory_output_stream_get_data(mb);
+    guint size = g_memory_output_stream_get_data_size(mb);
+
+    write4bytes(ptr+24, sample_rate);
+    write4bytes(ptr+28, sample_rate*2);
+	write4bytes(ptr+4, size-8);
+	write4bytes(ptr+40, size-44);
+
+    return TRUE;
 }
 
 gpointer

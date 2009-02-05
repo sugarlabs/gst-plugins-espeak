@@ -91,11 +91,6 @@ static GstFlowReturn gst_espeak_create (GstBaseSrc*,
 static gboolean gst_espeak_start (GstBaseSrc*);
 static gboolean gst_espeak_stop (GstBaseSrc*);
 static gboolean gst_espeak_is_seekable (GstBaseSrc*);
-static gboolean gst_espeak_unlock (GstBaseSrc*);
-static gboolean gst_espeak_unlock_stop (GstBaseSrc*);
-static gboolean gst_espeak_do_seek (GstBaseSrc*, GstSegment*);
-static gboolean gst_espeak_check_get_range (GstBaseSrc*);
-static gboolean gst_espeak_do_get_size (GstBaseSrc*, guint64*);
 static void gst_espeak_init_uri(GType);
 static void gst_espeak_finalize(GObject * gobject);
 static void gst_espeak_set_property (GObject * object, guint prop_id,
@@ -135,11 +130,6 @@ gst_espeak_class_init (GstEspeakClass * klass)
     basesrc_class->stop = gst_espeak_stop;
     basesrc_class->stop = gst_espeak_stop;
     basesrc_class->is_seekable = gst_espeak_is_seekable;
-    basesrc_class->unlock = gst_espeak_unlock;
-    basesrc_class->unlock_stop = gst_espeak_unlock_stop;
-    basesrc_class->do_seek = gst_espeak_do_seek;
-    basesrc_class->check_get_range = gst_espeak_check_get_range;
-    basesrc_class->get_size = gst_espeak_do_get_size;
 
     gobject_class->finalize = gst_espeak_finalize;
     gobject_class->set_property = gst_espeak_set_property;
@@ -293,11 +283,18 @@ static GstFlowReturn
 gst_espeak_create (GstBaseSrc * self_, guint64 offset, guint size,
         GstBuffer ** buf)
 {
-    GstEspeak *self = (GstEspeak*)self_;
+    GstEspeak *self = GST_ESPEAK(self_);
+
+    gpointer ptr = espeak_hear(self->speak, offset, &size);
+
+    if (size == 0)
+        return GST_FLOW_UNEXPECTED;
+
     *buf = gst_buffer_new();
-    GST_BUFFER_DATA (*buf) = espeak_hear(self->speak, offset, &size);
+    GST_BUFFER_DATA (*buf) = ptr;
     GST_BUFFER_SIZE (*buf) = size;
-    return size == 0 ? GST_FLOW_UNEXPECTED : GST_FLOW_OK;
+
+    return GST_FLOW_OK;
 }
 
 static gboolean
@@ -322,32 +319,6 @@ static gboolean
 gst_espeak_is_seekable (GstBaseSrc * src)
 {
     return FALSE;
-}
-
-static gboolean gst_espeak_unlock (GstBaseSrc * bsrc)
-{
-    return TRUE;
-}
-
-static gboolean gst_espeak_unlock_stop (GstBaseSrc * bsrc)
-{
-    return TRUE;
-}
-
-static gboolean gst_espeak_do_seek (GstBaseSrc * src, GstSegment * segment)
-{
-    return TRUE;
-}
-
-static gboolean gst_espeak_check_get_range (GstBaseSrc * src)
-{
-    return FALSE;
-}
-
-static gboolean gst_espeak_do_get_size (GstBaseSrc * src, guint64 * size)
-{
-    *size = -1;
-    return TRUE;
 }
 
 /******************************************************************************/
