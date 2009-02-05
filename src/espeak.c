@@ -63,7 +63,7 @@ static unsigned char wave_hdr[44] = {
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static GOutputStream *buffer = NULL;
 static gint sample_rate = 0;
-static const espeak_VOICE **langs = NULL;
+static const espeak_VOICE **voices = NULL;
 
 static gint
 read_cb(short * wav, int numsamples, espeak_EVENT * events)
@@ -88,7 +88,7 @@ init()
         ++initialized;
         sample_rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 4096, NULL, 0);
         espeak_SetSynthCallback(read_cb);
-        langs = espeak_ListVoices(NULL);
+        voices = espeak_ListVoices(NULL);
     }
     pthread_mutex_unlock(&mutex);
 }
@@ -108,7 +108,7 @@ espeak_new()
 }
 
 gchar**
-espeak_langs()
+espeak_voices()
 {
     gsize count = 0;
     const espeak_VOICE **i;
@@ -116,15 +116,16 @@ espeak_langs()
 
     init();
 
-    for (i = langs; *i; ++i) ++count;
+    for (i = voices; *i; ++i) ++count;
     out = j = g_new0(gchar*, count); 
-    for (i = langs; *i; ++i) *j++ = g_strdup((*i)->name);
+    for (i = voices; *i; ++i)
+        *j++ = g_strconcat((*i)->name, " ", (*i)->languages+1, NULL);
 
     return out;
 }
 
 gboolean
-espeak_say(struct Espeak *es, const gchar *text, const gchar *lang,
+espeak_say(struct Espeak *es, const gchar *text, const gchar *voice,
         guint pitch, guint rate)
 {
     g_seekable_seek(G_SEEKABLE(es->buffer), 0, G_SEEK_SET, NULL, NULL);
@@ -136,7 +137,7 @@ espeak_say(struct Espeak *es, const gchar *text, const gchar *lang,
     buffer = es->buffer;
     espeak_SetParameter(espeakPITCH, pitch, 0);
     espeak_SetParameter(espeakRATE, rate, 0);
-    espeak_SetVoiceByName(lang);
+    espeak_SetVoiceByName(voice);
     gint status = espeak_Synth(text, strlen(text)+1, 0, POS_WORD, 0,
                 espeakCHARS_AUTO, NULL, NULL);
     buffer = NULL;

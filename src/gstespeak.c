@@ -51,7 +51,7 @@
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch-0.10 espeak text="Hello world" pitch=99 rate=300 lang=default ! wavparse ! alsasink
+ * gst-launch-0.10 espeak text="Hello world" pitch=99 rate=300 voice=default ! wavparse ! alsasink
  * ]|
  * </refsect2>
  */
@@ -75,8 +75,8 @@ enum
     PROP_TEXT,
     PROP_PITCH,
     PROP_RATE,
-    PROP_LANG,
-    PROP_LANGS
+    PROP_VOICE,
+    PROP_VOICES
 };
 
 static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE (
@@ -147,13 +147,13 @@ gst_espeak_class_init (GstEspeakClass * klass)
             g_param_spec_uint("rate", "Speed in words per minute",
                 "Speed in words per minute", 80, 390, 170,
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-    g_object_class_install_property(gobject_class, PROP_LANG,
-            g_param_spec_string("lang", "Current lang",
-                "Current lang", "default",
+    g_object_class_install_property(gobject_class, PROP_VOICE,
+            g_param_spec_string("voice", "Current voice",
+                "Current voice", "default",
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-    g_object_class_install_property(gobject_class, PROP_LANGS,
-            g_param_spec_boxed("langs", "List of langs",
-                "List of langs", G_TYPE_STRV,
+    g_object_class_install_property(gobject_class, PROP_VOICES,
+            g_param_spec_boxed("voices", "List of voices",
+                "List of voices", G_TYPE_STRV,
                 G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 }
 
@@ -171,8 +171,8 @@ gst_espeak_init (GstEspeak * self,
     self->pitch = 50;
     self->rate = 170;
     self->speak = espeak_new();
-    self->lang = g_strdup("default");
-    self->langs = espeak_langs();
+    self->voice = g_strdup("default");
+    self->voices = espeak_voices();
 }
 
 static void
@@ -183,8 +183,8 @@ gst_espeak_finalize(GObject * self_)
     espeak_unref(self->speak);  self->speak = NULL;
     g_free(self->text);         self->text = NULL;
     g_free(self->uri);          self->uri = NULL;
-    g_free(self->lang);         self->lang = NULL;
-    g_strfreev(self->langs);    self->langs = NULL;
+    g_free(self->voice);        self->voice = NULL;
+    g_strfreev(self->voices);   self->voices = NULL;
 
     G_OBJECT_CLASS(parent_class)->dispose(self_);
 }
@@ -240,8 +240,8 @@ gst_espeak_set_property (GObject *object, guint prop_id,
         case PROP_RATE:
             self->rate = g_value_get_uint(value);
             break;
-        case PROP_LANG:
-            self->lang = g_strdup(g_value_get_string(value));
+        case PROP_VOICE:
+            self->voice = g_strdup(g_value_get_string(value));
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -265,11 +265,11 @@ gst_espeak_get_property (GObject * object, guint prop_id,
         case PROP_RATE:
             g_value_set_uint(value, self->rate);
             break;
-        case PROP_LANG:
-            g_value_set_string(value, self->lang);
+        case PROP_VOICE:
+            g_value_set_string(value, self->voice);
             break;
-        case PROP_LANGS:
-            g_value_set_boxed(value, self->langs);
+        case PROP_VOICES:
+            g_value_set_boxed(value, self->voices);
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -305,7 +305,7 @@ gst_espeak_start (GstBaseSrc * self_)
     if (self->text == NULL || self->text[0] == 0)
         return FALSE;
 
-    return espeak_say(self->speak, self->text, self->lang, self->pitch,
+    return espeak_say(self->speak, self->text, self->voice, self->pitch,
             self->rate);
 }
 

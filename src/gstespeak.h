@@ -75,8 +75,8 @@ struct _GstEspeak
     gchar *uri;
     guint pitch;
     guint rate;
-    gchar *lang;
-    gchar **langs;
+    gchar *voice;
+    gchar **voices;
 };
 
 struct _GstEspeakClass 
