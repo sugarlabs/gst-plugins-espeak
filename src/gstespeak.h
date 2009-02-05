@@ -69,14 +69,16 @@ struct Espeak;
 
 struct _GstEspeak
 {
-  GstAudioSrc parent;
-  struct Espeak *speak;
-  gboolean silent;
+    GstAudioSrc parent;
+    struct Espeak *speak;
+    gchar *text;
+    gchar *uri;
+    gboolean silent;
 };
 
 struct _GstEspeakClass 
 {
-  GstAudioSrcClass parent_class;
+    GstAudioSrcClass parent_class;
 };
 
 GType gst_espeak_get_type (void);
