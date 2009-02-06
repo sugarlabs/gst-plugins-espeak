@@ -119,7 +119,7 @@ espeak_voices()
     for (i = voices; *i; ++i) ++count;
     out = j = g_new0(gchar*, count); 
     for (i = voices; *i; ++i)
-        *j++ = g_strconcat((*i)->name, " ", (*i)->languages+1, NULL);
+        *j++ = g_strconcat((*i)->name, ":", (*i)->languages+1, NULL);
 
     return out;
 }

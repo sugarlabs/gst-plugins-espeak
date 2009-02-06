@@ -2,6 +2,7 @@
 # you can either set the environment variables AUTOCONF and AUTOMAKE
 # to the right versions, or leave them unset and get the RedHat 7.3 defaults
 
+NOCONFIGURE=1
 DIE=0
 package=gst-plugin
 srcfile=src/main.c

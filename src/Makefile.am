@@ -2,8 +2,8 @@ plugin_LTLIBRARIES = libgstespeak.la
 
 libgstespeak_la_SOURCES = gstespeak.c espeak.c
 
-libgstespeak_la_CFLAGS = $(GST_CFLAGS)
-libgstespeak_la_LIBADD = $(GST_LIBS) -lespeak -lgio-2.0 -lgobject-2.0 -lgmodule-2.0 -lglib-2.0 -lgstaudio-0.10 -lgstbase-0.10 -lgstinterfaces-0.10 -lgstreamer-0.10
+libgstespeak_la_CFLAGS = $(GST_CFLAGS) $(GIO_CFLAGS) $(GST_AUDIO_CFLAGS)
+libgstespeak_la_LIBADD = $(GST_LIBS) $(GIO_LIBS) $(GST_AUDIO_LIBS)
 libgstespeak_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 libgstespeak_la_LIBTOOLFLAGS = --tag=disable-static
 

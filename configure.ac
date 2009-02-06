@@ -127,5 +127,10 @@ dnl set proper LDFLAGS for plugins
 GST_PLUGIN_LDFLAGS='-module -avoid-version -export-symbols-regex [_]*\(gst_\|Gst\|GST_\).*'
 AC_SUBST(GST_PLUGIN_LDFLAGS)
 
+dnl check espeak dependencies
+AC_CHECK_LIB(espeak, espeak_Initialize,, AC_MSG_ERROR())
+PKG_CHECK_MODULES(GIO, gio-2.0)
+PKG_CHECK_MODULES(GST_AUDIO, gstreamer-audio-0.10)
+
 AC_OUTPUT(Makefile m4/Makefile src/Makefile)
 
