@@ -23,7 +23,7 @@
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch-0.10 espeak text="Hello world" pitch=99 rate=300 voice=default ! wavparse ! alsasink
+ * gst-launch-0.10 espeak text="Hello world" pitch=99 rate=300 voice=default ! alsasink
  * ]|
  * </refsect2>
  */
@@ -48,27 +48,28 @@ enum
     PROP_PITCH,
     PROP_RATE,
     PROP_VOICE,
-    PROP_VOICES
+    PROP_VOICES,
+    PROP_CAPS
 };
 
 static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE (
     "src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("ANY")
+    GST_STATIC_CAPS_ANY
     );
 
-static GstFlowReturn gst_espeak_create (GstBaseSrc*,
+static GstFlowReturn gst_espeak_create(GstBaseSrc*,
     guint64, guint, GstBuffer**);
-static gboolean gst_espeak_start (GstBaseSrc*);
-static gboolean gst_espeak_stop (GstBaseSrc*);
+static gboolean gst_espeak_start(GstBaseSrc*);
+static gboolean gst_espeak_stop(GstBaseSrc*);
 static gboolean gst_espeak_is_seekable (GstBaseSrc*);
 static void gst_espeak_init_uri(GType);
-static void gst_espeak_finalize(GObject * gobject);
-static void gst_espeak_set_property (GObject * object, guint prop_id,
-    const GValue * value, GParamSpec * pspec);
-static void gst_espeak_get_property (GObject * object, guint prop_id,
-    GValue * value, GParamSpec * pspec);
+static void gst_espeak_finalize(GObject*);
+static void gst_espeak_set_property(GObject*, guint, const GValue*,
+        GParamSpec*);
+static void gst_espeak_get_property(GObject*, guint, GValue*, GParamSpec*);
+static GstCaps *gst_espeak_getcaps(GstBaseSrc*);
 
 GST_BOILERPLATE_FULL(GstEspeak, gst_espeak, GstBaseSrc, GST_TYPE_BASE_SRC,
         gst_espeak_init_uri);
@@ -102,6 +103,7 @@ gst_espeak_class_init (GstEspeakClass * klass)
     basesrc_class->stop = gst_espeak_stop;
     basesrc_class->stop = gst_espeak_stop;
     basesrc_class->is_seekable = gst_espeak_is_seekable;
+    basesrc_class->get_caps = gst_espeak_getcaps;
 
     gobject_class->finalize = gst_espeak_finalize;
     gobject_class->set_property = gst_espeak_set_property;
@@ -127,6 +129,10 @@ gst_espeak_class_init (GstEspeakClass * klass)
             g_param_spec_boxed("voices", "List of voices",
                 "List of voices", G_TYPE_STRV,
                 G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
+    g_object_class_install_property (gobject_class, PROP_CAPS,
+            g_param_spec_boxed ("caps", "Caps",
+                "Caps describing the format of the data.", GST_TYPE_CAPS,
+                G_PARAM_READABLE));
 }
 
 /* initialize the new element
@@ -145,13 +151,23 @@ gst_espeak_init (GstEspeak * self,
     self->speak = espeak_new();
     self->voice = g_strdup("default");
     self->voices = espeak_voices();
+
+    self->caps = gst_caps_new_simple("audio/x-raw-int",
+            "rate", G_TYPE_INT, espeak_sample_rate(),
+            "channels", G_TYPE_INT, 1,
+            "endianness", G_TYPE_INT, G_BYTE_ORDER,
+            "width", G_TYPE_INT, 16,
+            "depth", G_TYPE_INT, 16,
+            "signed", G_TYPE_BOOLEAN, TRUE,
+            NULL);
 }
 
 static void
 gst_espeak_finalize(GObject * self_)
 {
-    GstEspeak *self = (GstEspeak*)self_;
+    GstEspeak *self = GST_ESPEAK(self_);
 
+    gst_caps_unref(self->caps); self->caps = NULL;
     espeak_unref(self->speak);  self->speak = NULL;
     g_free(self->text);         self->text = NULL;
     g_free(self->uri);          self->uri = NULL;
@@ -243,6 +259,9 @@ gst_espeak_get_property (GObject * object, guint prop_id,
         case PROP_VOICES:
             g_value_set_boxed(value, self->voices);
             break;
+        case PROP_CAPS:
+            gst_value_set_caps(value, self->caps);
+            break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
             break;
@@ -291,6 +310,13 @@ static gboolean
 gst_espeak_is_seekable (GstBaseSrc * src)
 {
     return FALSE;
+}
+
+static GstCaps *
+gst_espeak_getcaps(GstBaseSrc *self_)
+{
+    GstEspeak *self = GST_ESPEAK(self_);
+    return gst_caps_ref(self->caps);
 }
 
 /******************************************************************************/

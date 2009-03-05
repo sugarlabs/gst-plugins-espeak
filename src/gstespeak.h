@@ -49,6 +49,7 @@ struct _GstEspeak
     guint rate;
     gchar *voice;
     gchar **voices;
+    GstCaps *caps;
 };
 
 struct _GstEspeakClass 

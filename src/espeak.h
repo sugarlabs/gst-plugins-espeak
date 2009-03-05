@@ -21,6 +21,7 @@
 struct Espeak;
 
 struct Espeak* espeak_new();
+gint espeak_sample_rate();
 gchar** espeak_voices();
 gboolean espeak_say(struct Espeak*, const gchar *text, const gchar *voice,
         guint pitch, guint rate);
