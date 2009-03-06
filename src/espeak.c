@@ -21,27 +21,51 @@
 #include <glib.h>
 #include <gio/gio.h>
 #include <espeak/speak_lib.h>
+#include <gst/gst.h>
 
-struct Espeak
+#include "spin.h"
+#include "espeak.h"
+
+struct _Espeak
 {
-    GOutputStream *buffer;
+    Econtext *context;
+    guint rate;
+    guint pitch;
+    const gchar *voice;
 };
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-static GOutputStream *buffer = NULL;
-static gint sample_rate = 0;
-static const espeak_VOICE **voices = NULL;
+static gint espeak_sample_rate = 0;
+static const espeak_VOICE **espeak_voices = NULL;
+static GOutputStream *espeak_buffer = NULL;
 
 static gint
-read_cb(short * data, int numsamples, espeak_EVENT * events)
+synth_cb(short * data, int numsamples, espeak_EVENT * events)
 {
     if (data == NULL)
         return 0;
 
     if (numsamples > 0)
-        g_output_stream_write(buffer, data, numsamples*2, NULL, NULL);
+        g_output_stream_write(espeak_buffer, data, numsamples*2, NULL, NULL);
+
+    GST_DEBUG("numsamples=%d data_size=%ld", numsamples*2,
+            g_memory_output_stream_get_data_size(G_MEMORY_OUTPUT_STREAM(
+                    espeak_buffer)));
 
     return 0;
+}
+
+static void
+synth(const gchar *text, GMemoryOutputStream *sound, gpointer self_)
+{
+    Espeak *self = (Espeak*)self_;
+
+    espeak_SetParameter(espeakPITCH, self->pitch, 0);
+    espeak_SetParameter(espeakRATE, self->rate, 0);
+    espeak_SetVoiceByName(self->voice);
+    espeak_buffer = G_OUTPUT_STREAM(sound);
+
+    espeak_Synth(text, strlen(text)+1, 0, POS_WORD, 0, espeakCHARS_UTF8,
+            NULL, NULL);
 }
 
 static void
@@ -49,39 +73,47 @@ init()
 {
     static volatile gsize initialized = 0;
 
-    pthread_mutex_lock(&mutex);
     if (initialized == 0)
     {
         ++initialized;
-        sample_rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 4096, NULL, 0);
-        espeak_SetSynthCallback(read_cb);
-        voices = espeak_ListVoices(NULL);
+        espeak_sample_rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 4096,
+                NULL, 0);
+        espeak_SetSynthCallback(synth_cb);
+        espeak_voices = espeak_ListVoices(NULL);
+        spin_init(synth);
     }
-    pthread_mutex_unlock(&mutex);
 }
 
-struct Espeak*
+Espeak*
 espeak_new()
 {
     init();
 
-    if (sample_rate == EE_INTERNAL_ERROR)
-        return NULL;
+    Espeak *self = g_new0(Espeak, 1);
+    self->context = spin_new(self);
+    self->pitch = ESPEAK_DEFAULT_PITCH;
+    self->rate = ESPEAK_DEFAULT_RATE;
+    self->voice = ESPEAK_DEFAULT_VOICE;
 
-    struct Espeak *es = g_new(struct Espeak, 1);
-    es->buffer = g_memory_output_stream_new(NULL, 0, realloc, free);
+    return self;
+}
 
-    return es;
+void
+espeak_unref(Espeak *self)
+{
+    spin_unref(self->context);
+    memset(self, 0, sizeof(Espeak));
+    g_free(self);
 }
 
 gint
-espeak_sample_rate()
+espeak_get_sample_rate()
 {
-    return sample_rate;
+    return espeak_sample_rate;
 }
 
 gchar**
-espeak_voices()
+espeak_get_voices()
 {
     gsize count = 0;
     const espeak_VOICE **i;
@@ -89,52 +121,40 @@ espeak_voices()
 
     init();
 
-    for (i = voices; *i; ++i) ++count;
+    for (i = espeak_voices; *i; ++i) ++count;
     out = j = g_new0(gchar*, count); 
-    for (i = voices; *i; ++i)
+    for (i = espeak_voices; *i; ++i)
         *j++ = g_strconcat((*i)->name, ":", (*i)->languages+1, NULL);
 
     return out;
 }
 
-gboolean
-espeak_say(struct Espeak *es, const gchar *text, const gchar *voice,
-        guint pitch, guint rate)
+void
+espeak_set_pitch(Espeak *self, guint value)
 {
-    g_seekable_seek(G_SEEKABLE(es->buffer), 0, G_SEEK_SET, NULL, NULL);
-
-    pthread_mutex_lock(&mutex);
-    buffer = es->buffer;
-    espeak_SetParameter(espeakPITCH, pitch, 0);
-    espeak_SetParameter(espeakRATE, rate, 0);
-    espeak_SetVoiceByName(voice);
-    gint status = espeak_Synth(text, strlen(text)+1, 0, POS_WORD, 0,
-                espeakCHARS_AUTO, NULL, NULL);
-    buffer = NULL;
-    pthread_mutex_unlock(&mutex);
-
-    if (status != EE_OK)
-        return FALSE;
-
-    return TRUE;
-}
-
-gpointer
-espeak_hear(struct Espeak *es, goffset offset, guint *size)
-{
-    GMemoryOutputStream *mb = (GMemoryOutputStream*)es->buffer;
-
-    gpointer out = g_memory_output_stream_get_data(mb) + offset;
-    *size = MIN(g_memory_output_stream_get_data_size(mb) - offset, *size);
-
-    return out;
+    self->pitch = value;
 }
 
 void
-espeak_unref(struct Espeak *es)
+espeak_set_rate(Espeak *self, guint value)
 {
-    g_output_stream_close(es->buffer, NULL, NULL);
-    g_object_unref(es->buffer);
-    es->buffer = 0;
-    g_free(es);
+    self->rate = value;
+}
+
+void
+espeak_set_voice(Espeak *self, const gchar *value)
+{
+    self->voice = value;
+}
+
+void
+espeak_say(Espeak *self, const gchar *text)
+{
+    spin_in(self->context, text);
+}
+
+gpointer
+espeak_hear(Espeak *self, gsize size)
+{
+    return spin_out(self->context, &size);
 }

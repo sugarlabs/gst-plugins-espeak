@@ -15,24 +15,18 @@
  * Boston, MA 02111-1307, USA.
  */
 
-#ifndef ESPEAK_H
-#define ESPEAK_H
+#ifndef SPIN_H
+#define SPIN_H
 
-#define ESPEAK_DEFAULT_PITCH  50
-#define ESPEAK_DEFAULT_RATE   170 
-#define ESPEAK_DEFAULT_VOICE  "default"
+struct _Econtext;
+typedef struct _Econtext Econtext;
 
-struct _Espeak;
-typedef struct _Espeak Espeak;
+typedef void (*EspeakCallBack)(const gchar*, GMemoryOutputStream*, gpointer);
 
-struct _Espeak* espeak_new();
-void            espeak_unref(struct _Espeak*);
-gint            espeak_get_sample_rate();
-gchar**         espeak_get_voices();
-void            espeak_set_pitch(struct _Espeak*, guint);
-void            espeak_set_rate(struct _Espeak*, guint);
-void            espeak_set_voice(struct _Espeak*, const gchar*);
-void            espeak_say(struct _Espeak*, const gchar *text);
-gpointer        espeak_hear(struct _Espeak*, gsize);
+void                spin_init(EspeakCallBack);
+struct _Econtext*   spin_new();
+void                spin_unref(struct _Econtext*);
+void                spin_in(struct _Econtext*, const gchar *str);
+gpointer            spin_out(struct _Econtext*, gsize *size_to_play);
 
 #endif

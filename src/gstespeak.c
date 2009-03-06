@@ -112,7 +112,7 @@ gst_espeak_class_init (GstEspeakClass * klass)
     g_object_class_install_property(gobject_class, PROP_TEXT,
             g_param_spec_string("text", "Text",
                 "Text to pronounce", NULL,
-                G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+                G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_PITCH,
             g_param_spec_uint("pitch", "Pitch adjustment",
                 "Pitch adjustment", 0, 99, 50,
@@ -144,16 +144,14 @@ static void
 gst_espeak_init (GstEspeak * self,
     GstEspeakClass * gclass)
 {
-    self->text = NULL;
-    self->uri = NULL;
-    self->pitch = 50;
-    self->rate = 170;
+    self->pitch = ESPEAK_DEFAULT_PITCH;
+    self->rate = ESPEAK_DEFAULT_RATE;
+    self->voice = g_strdup(ESPEAK_DEFAULT_VOICE);
+    self->voices = espeak_get_voices();
     self->speak = espeak_new();
-    self->voice = g_strdup("default");
-    self->voices = espeak_voices();
 
     self->caps = gst_caps_new_simple("audio/x-raw-int",
-            "rate", G_TYPE_INT, espeak_sample_rate(),
+            "rate", G_TYPE_INT, espeak_get_sample_rate(),
             "channels", G_TYPE_INT, 1,
             "endianness", G_TYPE_INT, G_BYTE_ORDER,
             "width", G_TYPE_INT, 16,
@@ -169,8 +167,6 @@ gst_espeak_finalize(GObject * self_)
 
     gst_caps_unref(self->caps); self->caps = NULL;
     espeak_unref(self->speak);  self->speak = NULL;
-    g_free(self->text);         self->text = NULL;
-    g_free(self->uri);          self->uri = NULL;
     g_free(self->voice);        self->voice = NULL;
     g_strfreev(self->voices);   self->voices = NULL;
 
@@ -179,57 +175,27 @@ gst_espeak_finalize(GObject * self_)
 
 /******************************************************************************/
 
-static gboolean
-gst_espeak_set_text(GstEspeak *self, const gchar *text)
-{
-    GstState state;
-
-    /* the element must be stopped in order to do this */
-    GST_OBJECT_LOCK(self);
-    state = GST_STATE(self);
-    GST_OBJECT_UNLOCK (self);
-
-    if (state != GST_STATE_READY && state != GST_STATE_NULL)
-    {
-        GST_DEBUG_OBJECT(self, "setting text in wrong state");
-        return FALSE;
-    }
-
-    g_free(self->text);
-    g_free(self->uri);
-
-    if (text == NULL) {
-        self->text = NULL;
-        self->uri = NULL;
-    } else {
-        self->text = g_strdup(text);
-        self->uri = gst_uri_construct ("espeak", self->text);
-    }
-
-    g_object_notify(G_OBJECT (self), "text");
-    gst_uri_handler_new_uri(GST_URI_HANDLER(self), self->uri);
-
-    return TRUE;
-}
-
 static void
-gst_espeak_set_property (GObject *object, guint prop_id,
+gst_espeak_set_property(GObject *object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
     GstEspeak *self = GST_ESPEAK(object);
 
     switch (prop_id) {
         case PROP_TEXT:
-            gst_espeak_set_text(self, g_value_get_string(value));
+            espeak_say(self->speak, g_value_get_string(value));
             break;
         case PROP_PITCH:
             self->pitch = g_value_get_uint(value);
+            espeak_set_pitch(self->speak, self->pitch);
             break;
         case PROP_RATE:
             self->rate = g_value_get_uint(value);
+            espeak_set_rate(self->speak, self->rate);
             break;
         case PROP_VOICE:
             self->voice = g_strdup(g_value_get_string(value));
+            espeak_set_voice(self->speak, self->voice);
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -238,15 +204,12 @@ gst_espeak_set_property (GObject *object, guint prop_id,
 }
 
 static void
-gst_espeak_get_property (GObject * object, guint prop_id,
+gst_espeak_get_property(GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
     GstEspeak *self = GST_ESPEAK(object);
 
     switch (prop_id) {
-        case PROP_TEXT:
-            g_value_set_string(value, self->text);
-            break;
         case PROP_PITCH:
             g_value_set_uint(value, self->pitch);
             break;
@@ -271,43 +234,37 @@ gst_espeak_get_property (GObject * object, guint prop_id,
 /******************************************************************************/
 
 static GstFlowReturn
-gst_espeak_create (GstBaseSrc * self_, guint64 offset, guint size,
-        GstBuffer ** buf)
+gst_espeak_create(GstBaseSrc * self_, guint64 offset, guint size,
+        GstBuffer **buf)
 {
     GstEspeak *self = GST_ESPEAK(self_);
 
-    gpointer ptr = espeak_hear(self->speak, offset, &size);
+    gpointer sound = espeak_hear(self->speak, size);
 
-    if (size == 0)
+    if (sound == NULL)
         return GST_FLOW_UNEXPECTED;
 
     *buf = gst_buffer_new();
-    GST_BUFFER_DATA (*buf) = ptr;
-    GST_BUFFER_SIZE (*buf) = size;
+    GST_BUFFER_DATA(*buf) = sound;
+    GST_BUFFER_SIZE(*buf) = size;
 
     return GST_FLOW_OK;
 }
 
 static gboolean
-gst_espeak_start (GstBaseSrc * self_)
-{
-    GstEspeak *self = GST_ESPEAK(self_);
-
-    if (self->text == NULL || self->text[0] == 0)
-        return FALSE;
-
-    return espeak_say(self->speak, self->text, self->voice, self->pitch,
-            self->rate);
-}
-
-static gboolean
-gst_espeak_stop (GstBaseSrc * self)
+gst_espeak_start(GstBaseSrc * self_)
 {
     return TRUE;
 }
 
 static gboolean
-gst_espeak_is_seekable (GstBaseSrc * src)
+gst_espeak_stop(GstBaseSrc * self)
+{
+    return TRUE;
+}
+
+static gboolean
+gst_espeak_is_seekable(GstBaseSrc * src)
 {
     return FALSE;
 }
@@ -334,13 +291,6 @@ gst_espeak_uri_get_protocols(void)
     return protocols;
 }
 
-static const gchar *
-gst_espeak_uri_get_uri(GstURIHandler *handler)
-{
-    GstEspeak *self = GST_ESPEAK(handler);
-    return self->uri;
-}
-
 static gboolean
 gst_espeak_uri_set_uri(GstURIHandler *handler, const gchar *uri)
 {
@@ -357,10 +307,10 @@ gst_espeak_uri_set_uri(GstURIHandler *handler, const gchar *uri)
     if (!text)
         return FALSE;
 
-    ret = gst_espeak_set_text(GST_ESPEAK(handler), text);
+    espeak_say(GST_ESPEAK(handler)->speak, text);
     g_free (text);
 
-    return ret;
+    return TRUE;
 }
 
 static void
@@ -370,7 +320,6 @@ gst_espeak_uri_handler_init(gpointer g_iface, gpointer iface_data)
 
     iface->get_type = gst_espeak_uri_get_type;
     iface->get_protocols = gst_espeak_uri_get_protocols;
-    iface->get_uri = gst_espeak_uri_get_uri;
     iface->set_uri = gst_espeak_uri_set_uri;
 }
 
