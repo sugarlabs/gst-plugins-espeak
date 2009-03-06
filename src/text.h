@@ -29,7 +29,7 @@ typedef struct
 } Text;
 
 inline Text*
-string_new(const gchar *src)
+text_new(const gchar *src)
 {
     if (!src)
         return NULL;
@@ -52,7 +52,7 @@ string_new(const gchar *src)
 }
 
 inline void
-string_chunk(Text *src, Text *dst, gsize len)
+text_chunk(Text *src, Text *dst, gsize len)
 {
     memcpy(dst, src, sizeof(Text));
 
@@ -76,32 +76,45 @@ string_chunk(Text *src, Text *dst, gsize len)
     src->offset += dst->frame_len;
     src->frame_len -= dst->frame_len;
 
-    GST_DEBUG("[%p] len=%ld dst_len=%ld dst_last=%ld", src, len, dst_len,
-            dst_last-dst->body);
+    GST_DEBUG("[%p] len=%ld dst_len=%ld dst_last=%ld "
+              "src->offset=%ld src->frame_len=%ld", src, len, dst_len,
+            dst_last-dst->body, src->offset, src->frame_len);
+}
+
+inline gchar*
+text_first(Text *self)
+{
+    return self->body + self->offset;
+}
+
+inline gchar*
+text_last(Text *self)
+{
+    return text_first(self) + self->frame_len;
 }
 
 inline gboolean
-string_nil(Text *str)
+text_eot(Text *str)
 {
-    return str->frame_len == 0;
+return str->frame_len == 0;
 }
 
 inline void
 string_unref(Text *str)
 {
-    if (string_nil(str))
-        return;
+if (text_eot(str))
+    return;
 
-    gpointer data = NULL;
+gpointer data = NULL;
 
-    if (str->offset + str->frame_len >= str->len)
-        data = str->body - sizeof(Text);
+if (str->offset + str->frame_len >= str->len)
+    data = str->body - sizeof(Text);
 
-    memset(str, 0, sizeof(Text));
+memset(str, 0, sizeof(Text));
 
-    GST_DEBUG("[%p]", data);
+GST_DEBUG("[%p]", data);
 
-    g_free(data);
+g_free(data);
 }
 
 #endif

@@ -140,7 +140,7 @@ spin_in(Econtext *self, const gchar *str_)
     if (str_ == NULL || *str_ == 0)
         return;
 
-    Text *str = string_new(str_);
+    Text *str = text_new(str_);
 
     if (self->in_queue)
     {
@@ -148,42 +148,28 @@ spin_in(Econtext *self, const gchar *str_)
         return;
     }
 
-    gsize orig_frame_len = str->frame_len;
+    gboolean chunked = FALSE;
 
     pthread_mutex_lock(&self->lock);
 
-    while (str->frame_len && self->in->state == IN)
+    while (!text_eot(str) && self->in->state == IN)
     {
         Espin *spin = self->in;
-
-        GST_DEBUG("[%p] str->offset=%ld str->frame_len=%ld "
-                  "spin->text.offset=%ld spin->text.frame_len=%ld", self,
-                str->offset, str->frame_len,
-                spin->text.offset, spin->text.frame_len);
-
-        string_chunk(str, &spin->text, SPIN_FRAME_SIZE);
+        text_chunk(str, &spin->text, SPIN_FRAME_SIZE);
         spin->state = PROCESS;
-
-        GST_DEBUG("[%p] str->offset=%ld str->frame_len=%ld "
-                  "spin->text.offset=%ld spin->text.frame_len=%ld", self,
-                str->offset, str->frame_len,
-                spin->text.offset, spin->text.frame_len);
-
         spinning(self->queue, &self->in);
+        chunked = TRUE;
     }
 
-    if ((orig_frame_len != str->frame_len) && (self->state & INPROCESS) == 0)
+    if (chunked && (self->state & INPROCESS) == 0)
     {
-        GST_DEBUG("[%p] orig_frame_len=%ld str->len=%ld", self, orig_frame_len,
-                str->len);
-
         self->state |= INPROCESS;
         process_push(self);
     }
 
     pthread_mutex_unlock(&self->lock);
 
-    if (!string_nil(str))
+    if (!text_eot(str))
         self->in_queue = g_slist_append(self->in_queue, str);
 }
 
@@ -267,9 +253,11 @@ process(void *data)
             gboolean next = FALSE;
 
             pthread_mutex_unlock(&process_lock);
-                gchar *text = spin->text.body + spin->text.offset;
-                gchar last_char = text[spin->text.frame_len];
-                text[spin->text.frame_len] = 0;
+                gchar *text = text_first(&spin->text);
+                gchar *last = text_last(&spin->text);
+
+                gchar last_char = *last;
+                *last = 0;
 
                 GST_DEBUG("[%p] text=%s", context, text);
 
@@ -278,7 +266,7 @@ process(void *data)
                 process_espeak_cb(text, spin->sound, context->closure);
                 spin->sound_pos = 0;
 
-                text[spin->text.frame_len] = last_char;
+                *last = last_char;
 
                 pthread_mutex_lock(&context->lock);
                     spin->state = OUT;
