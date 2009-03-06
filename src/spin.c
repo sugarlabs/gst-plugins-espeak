@@ -199,7 +199,7 @@ spin_out(Econtext *self, gsize *size_to_play)
         if (spin->state == PLAY && spin->sound_pos >= spin_size)
         {
             spin->state = IN;
-            string_unref(&spin->text);
+            text_unref(&spin->text);
             spinning(self->queue, &self->out);
 
             GST_DEBUG("[%p] self->out->state=%d", self, self->out->state);
@@ -273,7 +273,11 @@ process(void *data)
                     spinning(context->queue, &context->process);
                     next = context->process->state == PROCESS;
                     if (!next)
-                        context->state |= INPROCESS;
+                    {
+                        context->state &= ~INPROCESS;
+                        GST_DEBUG("[%p] context->state=%d", context,
+                                context->state);
+                    }
                 pthread_mutex_unlock(&context->lock);
             pthread_mutex_lock(&process_lock);
 

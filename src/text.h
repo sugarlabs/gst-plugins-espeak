@@ -96,25 +96,25 @@ text_last(Text *self)
 inline gboolean
 text_eot(Text *str)
 {
-return str->frame_len == 0;
+    return str->frame_len == 0;
 }
 
 inline void
-string_unref(Text *str)
+text_unref(Text *str)
 {
-if (text_eot(str))
-    return;
+    if (text_eot(str))
+        return;
 
-gpointer data = NULL;
+    gpointer data = NULL;
 
-if (str->offset + str->frame_len >= str->len)
-    data = str->body - sizeof(Text);
+    if (str->offset + str->frame_len >= str->len)
+        data = str->body - sizeof(Text);
 
-memset(str, 0, sizeof(Text));
+    memset(str, 0, sizeof(Text));
 
-GST_DEBUG("[%p]", data);
+    GST_DEBUG("[%p]", data);
 
-g_free(data);
+    g_free(data);
 }
 
 #endif
