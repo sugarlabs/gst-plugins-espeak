@@ -15,6 +15,9 @@
  * Boston, MA 02111-1307, USA.
  */
 
+#include <unistd.h>
+
+
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +29,7 @@
 #define SYNC_BUFFER_SIZE 4096
 
 #define SPIN_QUEUE_SIZE 2
-#define SPIN_FRAME_SIZE 256
+#define SPIN_FRAME_SIZE 255
 
 #include "espeak.h"
 #include "text.h"
@@ -41,8 +44,7 @@ typedef enum
 
 typedef enum
 {
-    CLOSE     = 1,
-    INPROCESS = 2
+    INPROCESS = 1
 } ContextState;
 
 typedef struct
@@ -50,6 +52,7 @@ typedef struct
     volatile SpinState state;
 
     Text text;
+    goffset last_word;
 
     GMemoryOutputStream *sound;
     goffset sound_offset;
@@ -73,6 +76,9 @@ struct _Econtext
     volatile gint rate;
     volatile gint pitch;
     volatile const gchar *voice;
+
+    GstElement *emitter;
+    GstBus *bus;
 };
 
 static inline void
@@ -82,13 +88,26 @@ spinning(Espin *base, Espin **i)
         *i = base;
 }
 
+static void
+emit_word(Econtext *self, guint offset, guint len)
+{
+    GstStructure *data = gst_structure_new("word",
+            "offset", G_TYPE_UINT, offset,
+            "len", G_TYPE_UINT, len,
+            NULL);
+    if (!self->bus)
+        self->bus = gst_element_get_bus(self->emitter);
+    GstMessage *msg = gst_message_new_element(GST_OBJECT(self->emitter), data);
+    gst_bus_post(self->bus, msg);
+}
+
 static void init();
 static void process_push(Econtext*);
 static void process_pop(Econtext*);
 
-static pthread_t process_tid;
-static pthread_mutex_t process_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t process_cond = PTHREAD_COND_INITIALIZER;
+static GThread *process_tid = NULL;
+static GMutex *process_lock = NULL;
+static GCond  *process_cond = NULL;
 static GSList *process_queue = NULL;
 
 static gint espeak_sample_rate = 0;
@@ -99,7 +118,7 @@ static GArray *espeak_events = NULL;
 // -----------------------------------------------------------------------------
 
 Econtext*
-espeak_new()
+espeak_new(GstElement *emitter)
 {
     init();
 
@@ -125,6 +144,11 @@ espeak_new()
     self->rate = ESPEAK_DEFAULT_RATE;
     self->voice = ESPEAK_DEFAULT_VOICE;
 
+    self->emitter = emitter;
+    gst_object_ref(self->emitter);
+
+    self->bus = NULL;
+
     GST_DEBUG("[%p]", self);
 
     return self;
@@ -135,10 +159,7 @@ espeak_unref(Econtext *self)
 {
     GST_DEBUG("[%p]", self);
 
-    g_atomic_int_set(&self->state, g_atomic_int_get(&self->state) | CLOSE);
     process_pop(self);
-
-    GST_DEBUG("[%p]", self);
 
     gint i;
 
@@ -160,6 +181,9 @@ espeak_unref(Econtext *self)
     }
 
     g_slist_free(self->process_chunk);
+
+    gst_object_unref(self->bus);
+    gst_object_unref(self->emitter);
 
     memset(self, 0, sizeof(Econtext));
     g_free(self);
@@ -184,13 +208,8 @@ in_spinning(Econtext *self, Text *text)
         chunked = TRUE;
     }
 
-    int self_status = g_atomic_int_get(&self->state);
-
-    if (chunked && (self_status & INPROCESS) == 0)
-    {
-        g_atomic_int_set(&self->state, self_status | INPROCESS);
+    if (chunked)
         process_push(self);
-    }
 
     GST_DEBUG("[%p] text.body=%s text.offset=%ld text.frame_len=%ld",
             self, text->body, text->offset, text->frame_len);
@@ -222,7 +241,7 @@ espeak_in(Econtext *self, const gchar *str_)
 }
 
 GstBuffer*
-play(Espin *spin, gsize size_to_play, gpointer emitter)
+play(Econtext *self, Espin *spin, gsize size_to_play)
 {
     inline gsize whole(Espin *spin, gsize size_to_play)
     {
@@ -230,7 +249,7 @@ play(Espin *spin, gsize size_to_play, gpointer emitter)
         return MIN(size_to_play, spin_size);
     }
 
-    inline gsize words(Espin *spin, gsize size_to_play, gpointer emitter)
+    inline gsize words(Econtext *self, Espin *spin, gsize size_to_play)
     {
         gsize spin_size = g_memory_output_stream_get_data_size(spin->sound);
         size_to_play = MIN(size_to_play, spin_size);
@@ -266,6 +285,12 @@ play(Espin *spin, gsize size_to_play, gpointer emitter)
             }
         }
 
+        if (text_offset != -1 && text_offset > spin->last_word)
+        {
+            spin->last_word = text_offset + text_len;
+            emit_word(self, text_offset, text_len);
+        }
+
         if (sample_offset - spin->sound_offset > size_to_play)
         {
             GST_DEBUG("sample_offset=%ld spin->sound_offset=%ld",
@@ -274,20 +299,15 @@ play(Espin *spin, gsize size_to_play, gpointer emitter)
         }
 
         if (text_offset != -1)
-        {
-            GST_DEBUG("event=%ld", event);
-            g_signal_emit_by_name(emitter, "word",
-                    text_offset, text_len, G_TYPE_NONE);
             spin->events_pos = event + 1;
-        }
 
         return sample_offset - spin->sound_offset;
     }
 
     g_atomic_int_set(&spin->state, PLAY);
 
-    if (emitter)
-        size_to_play = words(spin, size_to_play, emitter);
+    if (self->emitter)
+        size_to_play = words(self, spin, size_to_play);
     else
         size_to_play = whole(spin, size_to_play);
 
@@ -305,23 +325,28 @@ play(Espin *spin, gsize size_to_play, gpointer emitter)
 }
 
 GstBuffer*
-espeak_out(Econtext *self, gsize size_to_play, gpointer emitter)
+espeak_out(Econtext *self, gsize size_to_play)
 {
     GST_DEBUG("[%p] size_to_play=%d", self, size_to_play);
 
     for (;;)
     {
-        pthread_mutex_lock(&process_lock);
-            while ((g_atomic_int_get(&self->state) & CLOSE) == 0 &&
-                    (g_atomic_int_get(&self->out->state) & (PLAY|OUT)) == 0)
-                pthread_cond_wait(&process_cond, &process_lock);
-        pthread_mutex_unlock(&process_lock);
-
-        if (g_atomic_int_get(&self->state) & CLOSE)
-        {
-            GST_DEBUG("[%p]", self);
-            return NULL;
-        }
+        g_mutex_lock(process_lock);
+            if ((g_atomic_int_get(&self->out->state) & (PLAY|OUT)) == 0)
+            {
+                if (g_atomic_int_get(&self->state) & INPROCESS) 
+                {
+                    GST_DEBUG("[%p]", self);
+                    g_cond_wait(process_cond, process_lock);
+                }
+                else
+                {
+                    GST_DEBUG("[%p]", self);
+                    g_mutex_unlock(process_lock);
+                    return NULL;
+                }
+            }
+        g_mutex_unlock(process_lock);
 
         Espin *spin = self->out;
         gsize spin_size = g_memory_output_stream_get_data_size(spin->sound);
@@ -355,7 +380,7 @@ espeak_out(Econtext *self, gsize size_to_play, gpointer emitter)
             continue;
         }
 
-        return play(spin, size_to_play, emitter);
+        return play(self, spin, size_to_play);
     }
 
     return NULL;
@@ -406,6 +431,7 @@ synth(Econtext *self, Espin *spin)
     g_array_set_size(spin->events, 0);
     spin->sound_offset = 0;
     spin->events_pos = 0;
+    spin->last_word = -1;
 
     espeak_SetParameter(espeakPITCH, g_atomic_int_get(&self->pitch), 0);
     espeak_SetParameter(espeakRATE, g_atomic_int_get(&self->rate), 0);
@@ -465,15 +491,15 @@ espeak_set_voice(Econtext *self, const gchar *value)
 
 // process ----------------------------------------------------------------------
 
-static void*
-process(void *data)
+static gpointer
+process(gpointer data)
 {
-    pthread_mutex_lock(&process_lock);
+    g_mutex_lock(process_lock);
 
     for (;;)
     {
         while (process_queue == NULL)
-            pthread_cond_wait(&process_cond, &process_lock);
+            g_cond_wait(process_cond, process_lock);
 
         while (process_queue)
         {
@@ -501,10 +527,10 @@ process(void *data)
             }
         }
 
-        pthread_cond_broadcast(&process_cond);
+        g_cond_broadcast(process_cond);
     }
 
-    pthread_mutex_unlock(&process_lock);
+    g_mutex_unlock(process_lock);
 
     return NULL;
 }
@@ -512,18 +538,33 @@ process(void *data)
 static void
 process_push(Econtext *context)
 {
-    pthread_mutex_lock(&process_lock);
-    process_queue = g_slist_concat(process_queue, context->process_chunk);
-    pthread_cond_broadcast(&process_cond);
-    pthread_mutex_unlock(&process_lock);
+    GST_DEBUG("[%p]", context);
+    g_mutex_lock(process_lock);
+
+    int self_status = g_atomic_int_get(&context->state);
+
+    if ((self_status & INPROCESS) == 0)
+    {
+        g_atomic_int_set(&context->state, self_status | INPROCESS);
+        process_queue = g_slist_concat(process_queue, context->process_chunk);
+        g_cond_broadcast(process_cond);
+    }
+
+    g_mutex_unlock(process_lock);
+    GST_DEBUG("[%p]", context);
 }
 
 static void
 process_pop(Econtext *context)
 {
-    pthread_mutex_lock(&process_lock);
+    GST_DEBUG("[%p]", context);
+    g_mutex_lock(process_lock);
+
     process_queue = g_slist_remove_link(process_queue, context->process_chunk);
-    pthread_mutex_unlock(&process_lock);
+    g_cond_broadcast(process_cond);
+
+    g_mutex_unlock(process_lock);
+    GST_DEBUG("[%p]", context);
 }
 
 // -----------------------------------------------------------------------------
@@ -541,10 +582,8 @@ init()
         espeak_SetSynthCallback(synth_cb);
         espeak_voices = espeak_ListVoices(NULL);
 
-        pthread_attr_t attr;
-        g_assert(pthread_attr_init(&attr) == 0);
-        g_assert(pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED) == 0);
-        g_assert(pthread_create(&process_tid, &attr, process, NULL) == 0);
-        g_assert(pthread_attr_destroy(&attr) == 0);
+        process_lock = g_mutex_new();
+        process_cond = g_cond_new();
+        process_tid = g_thread_create(process, NULL, FALSE, NULL);
     }
 }

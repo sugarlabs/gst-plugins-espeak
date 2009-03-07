@@ -25,7 +25,7 @@
 struct _Econtext;
 typedef struct _Econtext Econtext;
 
-Econtext*  espeak_new();
+Econtext*  espeak_new(GstElement*);
 void       espeak_unref(Econtext*);
 
 gint       espeak_get_sample_rate();
@@ -35,6 +35,6 @@ void       espeak_set_rate(Econtext*, guint);
 void       espeak_set_voice(Econtext*, const gchar*);
 
 void       espeak_in(Econtext*, const gchar *str);
-GstBuffer* espeak_out(Econtext*, gsize size_to_play, gpointer emitter);
+GstBuffer* espeak_out(Econtext*, gsize size_to_play);
 
 #endif

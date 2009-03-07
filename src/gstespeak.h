@@ -48,12 +48,12 @@ struct _GstEspeak
     gchar *voice;
     gchar **voices;
     GstCaps *caps;
+    gboolean poll;
 };
 
 struct _GstEspeakClass 
 {
     GstAudioSrcClass parent_class;
-    void (*word) (GstEspeak*, goffset, gsize);
 };
 
 GType gst_espeak_get_type (void);

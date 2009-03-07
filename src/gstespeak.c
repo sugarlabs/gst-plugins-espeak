@@ -23,7 +23,7 @@
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch-0.10 espeak text="Hello world" pitch=99 rate=300 voice=default ! alsasink
+ * gst-launch-0.10 espeak text="Hello world" ! autoaudiosink
  * ]|
  * </refsect2>
  */
@@ -37,16 +37,9 @@
 
 #include "gstespeak.h"
 #include "espeak.h"
-#include "marshal.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_espeak_debug);
 #define GST_CAT_DEFAULT gst_espeak_debug
-
-enum
-{
-    SIGNAL_WORD,
-    LAST_SIGNAL
-};
 
 enum
 {
@@ -81,8 +74,6 @@ static GstCaps *gst_espeak_getcaps(GstBaseSrc*);
 GST_BOILERPLATE_FULL(GstEspeak, gst_espeak, GstBaseSrc, GST_TYPE_BASE_SRC,
         gst_espeak_init_uri);
 
-static gint signals[LAST_SIGNAL];
-
 /******************************************************************************/
 
 static void
@@ -102,14 +93,13 @@ gst_espeak_base_init (gpointer gclass)
 
 /* initialize the espeak's class */
 static void
-gst_espeak_class_init (GstEspeakClass * klass)
+gst_espeak_class_init(GstEspeakClass * klass)
 {
     GObjectClass *gobject_class = (GObjectClass *) klass;
     GstBaseSrcClass *basesrc_class = (GstBaseSrcClass *) klass;
 
     basesrc_class->create = gst_espeak_create;
     basesrc_class->start = gst_espeak_start;
-    basesrc_class->stop = gst_espeak_stop;
     basesrc_class->stop = gst_espeak_stop;
     basesrc_class->is_seekable = gst_espeak_is_seekable;
     basesrc_class->get_caps = gst_espeak_getcaps;
@@ -124,30 +114,24 @@ gst_espeak_class_init (GstEspeakClass * klass)
                 G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_PITCH,
             g_param_spec_uint("pitch", "Pitch adjustment",
-                "Pitch adjustment", 0, 99, 50,
+                "Pitch adjustment", 0, 99, ESPEAK_DEFAULT_PITCH,
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_RATE,
             g_param_spec_uint("rate", "Speed in words per minute",
-                "Speed in words per minute", 80, 390, 170,
+                "Speed in words per minute", 80, 390, ESPEAK_DEFAULT_RATE,
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_VOICE,
             g_param_spec_string("voice", "Current voice",
-                "Current voice", "default",
+                "Current voice", ESPEAK_DEFAULT_VOICE,
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_VOICES,
             g_param_spec_boxed("voices", "List of voices",
                 "List of voices", G_TYPE_STRV,
                 G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
-    g_object_class_install_property (gobject_class, PROP_CAPS,
-            g_param_spec_boxed ("caps", "Caps",
-                "Caps describing the format of the data.", GST_TYPE_CAPS,
+    g_object_class_install_property(gobject_class, PROP_CAPS,
+            g_param_spec_boxed("caps", "Caps",
+                "Caps describing the format of the data", GST_TYPE_CAPS,
                 G_PARAM_READABLE));
-
-    signals[SIGNAL_WORD] = g_signal_new("word",
-            G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST,
-            G_STRUCT_OFFSET(GstEspeakClass, word),
-            NULL, NULL, espeak_VOID__UINT_UINT, G_TYPE_NONE,
-            2, G_TYPE_UINT, G_TYPE_UINT);
 }
 
 /* initialize the new element
@@ -163,7 +147,7 @@ gst_espeak_init (GstEspeak * self,
     self->rate = ESPEAK_DEFAULT_RATE;
     self->voice = g_strdup(ESPEAK_DEFAULT_VOICE);
     self->voices = espeak_get_voices();
-    self->speak = espeak_new();
+    self->speak = espeak_new(GST_ELEMENT(self));
 
     self->caps = gst_caps_new_simple("audio/x-raw-int",
             "rate", G_TYPE_INT, espeak_get_sample_rate(),
@@ -178,6 +162,7 @@ gst_espeak_init (GstEspeak * self,
 static void
 gst_espeak_finalize(GObject * self_)
 {
+fprintf(stderr, "0!!!!!!\n");
     GstEspeak *self = GST_ESPEAK(self_);
 
     gst_caps_unref(self->caps); self->caps = NULL;
@@ -253,8 +238,16 @@ gst_espeak_create(GstBaseSrc * self_, guint64 offset, guint size,
         GstBuffer **buf)
 {
     GstEspeak *self = GST_ESPEAK(self_);
-    *buf = espeak_out(self->speak, size, self);
-    return *buf ? GST_FLOW_OK : GST_FLOW_UNEXPECTED;
+
+    *buf = espeak_out(self->speak, size);
+
+    if (*buf)
+        return GST_FLOW_OK;
+    else
+    {
+        //gst_element_set_state(GST_ELEMENT(self), GST_STATE_NULL);
+        return GST_FLOW_UNEXPECTED;
+    }
 }
 
 static gboolean
@@ -266,6 +259,7 @@ gst_espeak_start(GstBaseSrc * self_)
 static gboolean
 gst_espeak_stop(GstBaseSrc * self)
 {
+    GST_DEBUG("!!!!!!!!!!");
     return TRUE;
 }
 
@@ -348,7 +342,7 @@ gst_espeak_init_uri(GType filesrc_type)
  * register the element factories and other features
  */
 static gboolean
-espeak_init (GstPlugin * espeak)
+espeak_init(GstPlugin *espeak)
 {
   /* debug category for fltering log messages
    *
@@ -361,18 +355,14 @@ espeak_init (GstPlugin * espeak)
       GST_TYPE_ESPEAK);
 }
 
-/* gstreamer looks for this structure to register espeaks
- *
- * exchange the string 'Template espeak' with your espeak description
- */
-GST_PLUGIN_DEFINE (
+GST_PLUGIN_DEFINE(
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
     "espeak",
-    "Template espeak",
+    "Uses eSpeak library as a sound source for GStreamer",
     espeak_init,
-    VERSION,
+    PACKAGE_VERSION,
     "LGPL",
-    "GStreamer",
-    "http://gstreamer.net/"
+    PACKAGE_NAME,
+    "http://sugarlabs.org/go/DevelopmentTeam/gst-plugins-espeak"
 )
