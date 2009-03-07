@@ -22,17 +22,19 @@
 #define ESPEAK_DEFAULT_RATE   170 
 #define ESPEAK_DEFAULT_VOICE  "default"
 
-struct _Espeak;
-typedef struct _Espeak Espeak;
+struct _Econtext;
+typedef struct _Econtext Econtext;
 
-struct _Espeak* espeak_new();
-void            espeak_unref(struct _Espeak*);
-gint            espeak_get_sample_rate();
-gchar**         espeak_get_voices();
-void            espeak_set_pitch(struct _Espeak*, guint);
-void            espeak_set_rate(struct _Espeak*, guint);
-void            espeak_set_voice(struct _Espeak*, const gchar*);
-void            espeak_say(struct _Espeak*, const gchar *text);
-gpointer        espeak_hear(struct _Espeak*, gsize);
+Econtext*  espeak_new();
+void       espeak_unref(Econtext*);
+
+gint       espeak_get_sample_rate();
+gchar**    espeak_get_voices();
+void       espeak_set_pitch(Econtext*, guint);
+void       espeak_set_rate(Econtext*, guint);
+void       espeak_set_voice(Econtext*, const gchar*);
+
+void       espeak_in(Econtext*, const gchar *str);
+GstBuffer* espeak_out(Econtext*, gsize size_to_play, gpointer emitter);
 
 #endif

@@ -37,12 +37,12 @@ G_BEGIN_DECLS
 
 typedef struct _GstEspeak      GstEspeak;
 typedef struct _GstEspeakClass GstEspeakClass;
-struct _Espeak;
+struct _Econtext;
 
 struct _GstEspeak
 {
     GstAudioSrc parent;
-    struct _Espeak *speak;
+    struct _Econtext *speak;
     guint pitch;
     guint rate;
     gchar *voice;
@@ -53,6 +53,7 @@ struct _GstEspeak
 struct _GstEspeakClass 
 {
     GstAudioSrcClass parent_class;
+    void (*word) (GstEspeak*, goffset, gsize);
 };
 
 GType gst_espeak_get_type (void);

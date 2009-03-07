@@ -37,9 +37,16 @@
 
 #include "gstespeak.h"
 #include "espeak.h"
+#include "marshal.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_espeak_debug);
 #define GST_CAT_DEFAULT gst_espeak_debug
+
+enum
+{
+    SIGNAL_WORD,
+    LAST_SIGNAL
+};
 
 enum
 {
@@ -73,6 +80,8 @@ static GstCaps *gst_espeak_getcaps(GstBaseSrc*);
 
 GST_BOILERPLATE_FULL(GstEspeak, gst_espeak, GstBaseSrc, GST_TYPE_BASE_SRC,
         gst_espeak_init_uri);
+
+static gint signals[LAST_SIGNAL];
 
 /******************************************************************************/
 
@@ -133,6 +142,12 @@ gst_espeak_class_init (GstEspeakClass * klass)
             g_param_spec_boxed ("caps", "Caps",
                 "Caps describing the format of the data.", GST_TYPE_CAPS,
                 G_PARAM_READABLE));
+
+    signals[SIGNAL_WORD] = g_signal_new("word",
+            G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST,
+            G_STRUCT_OFFSET(GstEspeakClass, word),
+            NULL, NULL, espeak_VOID__UINT_UINT, G_TYPE_NONE,
+            2, G_TYPE_UINT, G_TYPE_UINT);
 }
 
 /* initialize the new element
@@ -183,7 +198,7 @@ gst_espeak_set_property(GObject *object, guint prop_id,
 
     switch (prop_id) {
         case PROP_TEXT:
-            espeak_say(self->speak, g_value_get_string(value));
+            espeak_in(self->speak, g_value_get_string(value));
             break;
         case PROP_PITCH:
             self->pitch = g_value_get_uint(value);
@@ -238,17 +253,8 @@ gst_espeak_create(GstBaseSrc * self_, guint64 offset, guint size,
         GstBuffer **buf)
 {
     GstEspeak *self = GST_ESPEAK(self_);
-
-    gpointer sound = espeak_hear(self->speak, size);
-
-    if (sound == NULL)
-        return GST_FLOW_UNEXPECTED;
-
-    *buf = gst_buffer_new();
-    GST_BUFFER_DATA(*buf) = sound;
-    GST_BUFFER_SIZE(*buf) = size;
-
-    return GST_FLOW_OK;
+    *buf = espeak_out(self->speak, size, self);
+    return *buf ? GST_FLOW_OK : GST_FLOW_UNEXPECTED;
 }
 
 static gboolean
@@ -307,7 +313,7 @@ gst_espeak_uri_set_uri(GstURIHandler *handler, const gchar *uri)
     if (!text)
         return FALSE;
 
-    espeak_say(GST_ESPEAK(handler)->speak, text);
+    espeak_in(GST_ESPEAK(handler)->speak, text);
     g_free (text);
 
     return TRUE;
