@@ -15,10 +15,6 @@
  * Boston, MA 02111-1307, USA.
  */
 
-#include <unistd.h>
-
-
-#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <glib.h>
@@ -332,19 +328,16 @@ espeak_out(Econtext *self, gsize size_to_play)
     for (;;)
     {
         g_mutex_lock(process_lock);
-            if ((g_atomic_int_get(&self->out->state) & (PLAY|OUT)) == 0)
+            while ((g_atomic_int_get(&self->out->state) & (PLAY|OUT)) == 0)
             {
-                if (g_atomic_int_get(&self->state) & INPROCESS) 
-                {
-                    GST_DEBUG("[%p]", self);
-                    g_cond_wait(process_cond, process_lock);
-                }
-                else
+                if ((self->state & INPROCESS) == 0)
                 {
                     GST_DEBUG("[%p]", self);
                     g_mutex_unlock(process_lock);
                     return NULL;
                 }
+                GST_DEBUG("[%p]", self);
+                g_cond_wait(process_cond, process_lock);
             }
         g_mutex_unlock(process_lock);
 
@@ -522,8 +515,7 @@ process(gpointer data)
             else
             {
                 GST_DEBUG("[%p]", context);
-                g_atomic_int_set(&context->state,
-                        g_atomic_int_get(&context->state) & ~INPROCESS);
+                context->state &= ~INPROCESS;
             }
         }
 
@@ -541,11 +533,9 @@ process_push(Econtext *context)
     GST_DEBUG("[%p]", context);
     g_mutex_lock(process_lock);
 
-    int self_status = g_atomic_int_get(&context->state);
-
-    if ((self_status & INPROCESS) == 0)
+    if ((context->state & INPROCESS) == 0)
     {
-        g_atomic_int_set(&context->state, self_status | INPROCESS);
+        context->state |= INPROCESS;
         process_queue = g_slist_concat(process_queue, context->process_chunk);
         g_cond_broadcast(process_cond);
     }
