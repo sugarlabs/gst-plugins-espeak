@@ -29,6 +29,7 @@
 
 #include "espeak.h"
 #include "text.h"
+#include "slist.h"
 
 typedef enum
 {
@@ -66,7 +67,8 @@ struct _Econtext
     Espin *process;
     Espin *out;
 
-    GSList *in_queue;
+    SList in_queue;
+
     GSList *process_chunk;
 
     volatile gint rate;
@@ -133,6 +135,8 @@ espeak_new(GstElement *emitter)
     self->process = self->queue;
     self->out = self->queue;
 
+    slist_new(&self->in_queue);
+
     self->process_chunk = g_slist_alloc();
     self->process_chunk->data = self;
 
@@ -142,7 +146,6 @@ espeak_new(GstElement *emitter)
 
     self->emitter = emitter;
     gst_object_ref(self->emitter);
-
     self->bus = NULL;
 
     GST_DEBUG("[%p]", self);
@@ -168,14 +171,7 @@ espeak_unref(Econtext *self)
         g_array_free(self->queue[i].events, TRUE);
     }
 
-    if (self->in_queue)
-    {
-        GSList *i;
-        for (i = self->in_queue; i; i = g_slist_next(i))
-            text_unref(i->data);
-        g_slist_free(self->in_queue);
-    }
-
+    slist_free(&self->in_queue);
     g_slist_free(self->process_chunk);
 
     gst_object_unref(self->bus);
@@ -188,20 +184,22 @@ espeak_unref(Econtext *self)
 // in/out ----------------------------------------------------------------------
 
 static void
-in_spinning(Econtext *self, Text *text)
+in_spinning(Econtext *self, Espin **spin, Text *text)
 {
     GST_DEBUG("[%p] text.body=%s text.offset=%ld text.frame_len=%ld",
             self, text->body, text->offset, text->frame_len);
 
     gboolean chunked = FALSE;
 
-    while (!text_eot(text) && g_atomic_int_get(&self->in->state) == IN)
+    while (!text_eot(text))
     {
-        Espin *spin = self->in;
-        text_chunk(text, &spin->text, SPIN_FRAME_SIZE);
-        g_atomic_int_set(&spin->state, PROCESS);
-        spinning(self->queue, &self->in);
+        text_chunk(text, &(*spin)->text, SPIN_FRAME_SIZE);
+        g_atomic_int_set(&(*spin)->state, PROCESS);
+        spinning(self->queue, spin);
         chunked = TRUE;
+
+        if (g_atomic_int_get(&(*spin)->state) != IN)
+            break;
     }
 
     if (chunked)
@@ -221,18 +219,19 @@ espeak_in(Econtext *self, const gchar *str_)
 
     Text *text = text_new(str_);
 
-    if (self->in_queue)
+    if (g_atomic_int_get(&self->in->state) != IN)
     {
-        self->in_queue = g_slist_append(self->in_queue, text);
+        // in_queue should be not empty at this point
+        slist_push(&self->in_queue, text);
         return;
     }
 
-    in_spinning(self, text);
+    in_spinning(self, &self->in, text);
 
     if (!text_eot(text))
     {
         GST_DEBUG("[%p] text_len=%d", self, text_len(text));
-        self->in_queue = g_slist_append(self->in_queue, text);
+        slist_push(&self->in_queue, text);
     }
 }
 
@@ -330,7 +329,8 @@ espeak_out(Econtext *self, gsize size_to_play)
         g_mutex_lock(process_lock);
             while ((g_atomic_int_get(&self->out->state) & (PLAY|OUT)) == 0)
             {
-                if ((self->state & INPROCESS) == 0)
+                if ((self->state & INPROCESS) == 0 &&
+                        slist_empty(&self->in_queue))
                 {
                     GST_DEBUG("[%p]", self);
                     g_mutex_unlock(process_lock);
@@ -344,31 +344,35 @@ espeak_out(Econtext *self, gsize size_to_play)
         Espin *spin = self->out;
         gsize spin_size = g_memory_output_stream_get_data_size(spin->sound);
 
-        GST_DEBUG("[%p] spin->sound_offset=%ld spin_size=%ld", self,
-                spin->sound_offset, spin_size);
+        GST_DEBUG("[%p] spin->sound_offset=%ld spin_size=%ld spin->body=%s",
+                self, spin->sound_offset, spin_size,
+                spin->text.body + spin->text.frame_len);
 
         if (g_atomic_int_get(&spin->state) == PLAY &&
                 spin->sound_offset >= spin_size)
         {
-            g_atomic_int_set(&spin->state, IN);
             text_unref(&spin->text);
-            spinning(self->queue, &self->out);
 
-            if (self->in_queue)
+            GSList *text_link = slist_pop_link(&self->in_queue);
+
+            if (text_link)
             {
-                Text *text = self->in_queue->data;
-                in_spinning(self, text);
+                Text *text = text_link->data;
+                in_spinning(self, &self->out, text);
+
+                GST_DEBUG("[%p] text_eot=%d", self, text_eot(text));
 
                 if (text_eot(text))
-                {
-                    self->in_queue = g_slist_delete_link(self->in_queue,
-                            self->in_queue);
-                    GST_DEBUG("[%p] in_queue=%d", self,
-                            g_slist_length(self->in_queue));
-                }
+                    g_slist_free(text_link);
+                else
+                    slist_push_link(&self->in_queue, text_link);
             }
-
-            GST_DEBUG("[%p]", self);
+            else
+            {
+                GST_DEBUG("[%p]", self);
+                g_atomic_int_set(&spin->state, IN);
+                spinning(self->queue, &self->out);
+            }
 
             continue;
         }

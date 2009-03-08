@@ -76,9 +76,10 @@ text_chunk(Text *src, Text *dst, gsize len)
     src->offset += dst->frame_len;
     src->frame_len -= dst->frame_len;
 
-    GST_DEBUG("[%p] len=%ld dst_len=%ld dst_last=%ld "
-              "src->offset=%ld src->frame_len=%ld", src, len, dst_len,
-            dst_last-dst->body, src->offset, src->frame_len);
+    GST_DEBUG("[%p] dst_len=%ld dst_last=%ld "
+              "src->offset=%ld src->frame_len=%ld dst->body=%s", src, dst_len,
+            dst_last-dst->body, src->offset, src->frame_len,
+            dst->body + dst->offset);
 }
 
 inline gchar*
