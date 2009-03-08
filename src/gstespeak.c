@@ -49,6 +49,7 @@ enum
     PROP_RATE,
     PROP_VOICE,
     PROP_VOICES,
+    PROP_GAP,
     PROP_CAPS
 };
 
@@ -124,6 +125,10 @@ gst_espeak_class_init(GstEspeakClass * klass)
             g_param_spec_string("voice", "Current voice",
                 "Current voice", ESPEAK_DEFAULT_VOICE,
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+    g_object_class_install_property(gobject_class, PROP_GAP,
+            g_param_spec_uint("gap", "Gap",
+                "Word gap", 0, G_MAXINT, ESPEAK_DEFAULT_GAP,
+                G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_VOICES,
             g_param_spec_boxed("voices", "List of voices",
                 "List of voices", G_TYPE_STRV,
@@ -197,6 +202,10 @@ gst_espeak_set_property(GObject *object, guint prop_id,
             self->voice = g_strdup(g_value_get_string(value));
             espeak_set_voice(self->speak, self->voice);
             break;
+        case PROP_GAP:
+            self->gap = g_value_get_uint(value);
+            espeak_set_gap(self->speak, self->gap);
+            break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
             break;
@@ -218,6 +227,9 @@ gst_espeak_get_property(GObject * object, guint prop_id,
             break;
         case PROP_VOICE:
             g_value_set_string(value, self->voice);
+            break;
+        case PROP_GAP:
+            g_value_set_uint(value, self->gap);
             break;
         case PROP_VOICES:
             g_value_set_boxed(value, self->voices);

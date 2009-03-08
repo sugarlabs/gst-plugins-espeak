@@ -21,6 +21,7 @@
 #define ESPEAK_DEFAULT_PITCH  50
 #define ESPEAK_DEFAULT_RATE   170 
 #define ESPEAK_DEFAULT_VOICE  "default"
+#define ESPEAK_DEFAULT_GAP    0 
 
 struct _Econtext;
 typedef struct _Econtext Econtext;
@@ -33,6 +34,7 @@ gchar**    espeak_get_voices();
 void       espeak_set_pitch(Econtext*, guint);
 void       espeak_set_rate(Econtext*, guint);
 void       espeak_set_voice(Econtext*, const gchar*);
+void       espeak_set_gap(Econtext*, guint);
 
 void       espeak_in(Econtext*, const gchar *str);
 GstBuffer* espeak_out(Econtext*, gsize size_to_play);

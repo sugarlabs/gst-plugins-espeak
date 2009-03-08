@@ -46,6 +46,7 @@ struct _GstEspeak
     guint pitch;
     guint rate;
     gchar *voice;
+    guint gap;
     gchar **voices;
     GstCaps *caps;
     gboolean poll;

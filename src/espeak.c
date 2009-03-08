@@ -74,6 +74,7 @@ struct _Econtext
     volatile gint rate;
     volatile gint pitch;
     volatile const gchar *voice;
+    volatile gint gap;
 
     GstElement *emitter;
     GstBus *bus;
@@ -143,6 +144,7 @@ espeak_new(GstElement *emitter)
     self->pitch = ESPEAK_DEFAULT_PITCH;
     self->rate = ESPEAK_DEFAULT_RATE;
     self->voice = ESPEAK_DEFAULT_VOICE;
+    self->gap = ESPEAK_DEFAULT_GAP;
 
     self->emitter = emitter;
     gst_object_ref(self->emitter);
@@ -433,6 +435,8 @@ synth(Econtext *self, Espin *spin)
     espeak_SetParameter(espeakPITCH, g_atomic_int_get(&self->pitch), 0);
     espeak_SetParameter(espeakRATE, g_atomic_int_get(&self->rate), 0);
     espeak_SetVoiceByName((gchar*)g_atomic_pointer_get(&self->voice));
+    espeak_SetParameter(espeakWORDGAP, g_atomic_int_get(&self->gap), 0);
+
     espeak_buffer = G_OUTPUT_STREAM(spin->sound);
     espeak_events = spin->events;
 
@@ -484,6 +488,12 @@ void
 espeak_set_voice(Econtext *self, const gchar *value)
 {
     g_atomic_pointer_set(&self->voice, value);
+}
+
+void
+espeak_set_gap(Econtext *self, guint value)
+{
+    g_atomic_int_set(&self->gap, value);
 }
 
 // process ----------------------------------------------------------------------
