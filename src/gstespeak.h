@@ -43,6 +43,7 @@ struct _GstEspeak
 {
     GstAudioSrc parent;
     struct _Econtext *speak;
+    gchar *text;
     gint pitch;
     gint rate;
     gchar *voice;

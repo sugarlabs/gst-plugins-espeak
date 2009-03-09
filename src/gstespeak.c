@@ -113,7 +113,7 @@ gst_espeak_class_init(GstEspeakClass * klass)
     g_object_class_install_property(gobject_class, PROP_TEXT,
             g_param_spec_string("text", "Text",
                 "Text to pronounce", NULL,
-                G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS));
+                G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_PITCH,
             g_param_spec_int("pitch", "Pitch adjustment",
                 "Pitch adjustment", -100, 100, 0,
@@ -153,6 +153,7 @@ static void
 gst_espeak_init (GstEspeak * self,
     GstEspeakClass * gclass)
 {
+    self->text = NULL;
     self->pitch = 0;
     self->rate = 0;
     self->voice = g_strdup(ESPEAK_DEFAULT_VOICE);
@@ -174,6 +175,7 @@ gst_espeak_finalize(GObject * self_)
 {
     GstEspeak *self = GST_ESPEAK(self_);
 
+    g_free(self->text);                 self->text = NULL;
     gst_caps_unref(self->caps);         self->caps = NULL;
     espeak_unref(self->speak);          self->speak = NULL;
     g_free(self->voice);                self->voice = NULL;
@@ -185,6 +187,13 @@ gst_espeak_finalize(GObject * self_)
 /******************************************************************************/
 
 static void
+gst_espeak_set_text(GstEspeak *self, const gchar *text)
+{
+    g_free(self->text);
+    self->text = g_strdup(text);
+}
+
+static void
 gst_espeak_set_property(GObject *object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
@@ -192,7 +201,7 @@ gst_espeak_set_property(GObject *object, guint prop_id,
 
     switch (prop_id) {
         case PROP_TEXT:
-            espeak_in(self->speak, g_value_get_string(value));
+            gst_espeak_set_text(self, g_value_get_string(value));
             break;
         case PROP_PITCH:
             self->pitch = g_value_get_int(value);
@@ -227,6 +236,9 @@ gst_espeak_get_property(GObject * object, guint prop_id,
     GstEspeak *self = GST_ESPEAK(object);
 
     switch (prop_id) {
+        case PROP_TEXT:
+            g_value_set_string(value, self->text);
+            break;
         case PROP_PITCH:
             g_value_set_uint(value, self->pitch);
             break;
@@ -273,6 +285,8 @@ gst_espeak_create(GstBaseSrc * self_, guint64 offset, guint size,
 static gboolean
 gst_espeak_start(GstBaseSrc * self_)
 {
+    GstEspeak *self = GST_ESPEAK(self_);
+    espeak_in(self->speak, self->text);
     return TRUE;
 }
 
@@ -328,7 +342,7 @@ gst_espeak_uri_set_uri(GstURIHandler *handler, const gchar *uri)
     if (!text)
         return FALSE;
 
-    espeak_in(GST_ESPEAK(handler)->speak, text);
+    gst_espeak_set_text(GST_ESPEAK(handler), text);
     g_free (text);
 
     return TRUE;
