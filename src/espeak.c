@@ -157,10 +157,10 @@ espeak_new(GstElement *emitter)
     self->process_chunk = g_slist_alloc();
     self->process_chunk->data = self;
 
-    self->pitch = ESPEAK_DEFAULT_PITCH;
-    self->rate = ESPEAK_DEFAULT_RATE;
+    self->pitch = 50;
+    self->rate = 170;
     self->voice = ESPEAK_DEFAULT_VOICE;
-    self->gap = ESPEAK_DEFAULT_GAP;
+    self->gap = 0;
     self->track = ESPEAK_TRACK_NONE;
 
     self->emitter = emitter;
@@ -559,14 +559,27 @@ espeak_get_voices()
 }
 
 void
-espeak_set_pitch(Econtext *self, guint value)
+espeak_set_pitch(Econtext *self, gint value)
 {
+    if (value == 0)
+        value = 50;
+    else
+        value = MIN(99, (value + 100) / 2);
+
     g_atomic_int_set(&self->pitch, value);
 }
 
 void
-espeak_set_rate(Econtext *self, guint value)
+espeak_set_rate(Econtext *self, gint value)
 {
+    if (value == 0)
+        value = 170;
+    else
+        if (value < 0)
+            value = MAX(80, value + 170);
+        else
+            value = 170 + value * 2;
+
     g_atomic_int_set(&self->rate, value);
 }
 

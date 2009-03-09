@@ -18,10 +18,7 @@
 #ifndef ESPEAK_H
 #define ESPEAK_H
 
-#define ESPEAK_DEFAULT_PITCH  50
-#define ESPEAK_DEFAULT_RATE   170 
 #define ESPEAK_DEFAULT_VOICE  "default"
-#define ESPEAK_DEFAULT_GAP    0 
 
 #define ESPEAK_TRACK_NONE 0
 #define ESPEAK_TRACK_WORD 1
@@ -35,8 +32,8 @@ void            espeak_unref(Econtext*);
 
 gint            espeak_get_sample_rate();
 GValueArray*    espeak_get_voices();
-void            espeak_set_pitch(Econtext*, guint);
-void            espeak_set_rate(Econtext*, guint);
+void            espeak_set_pitch(Econtext*, gint);
+void            espeak_set_rate(Econtext*, gint);
 void            espeak_set_voice(Econtext*, const gchar*);
 void            espeak_set_gap(Econtext*, guint);
 void            espeak_set_track(Econtext*, guint);

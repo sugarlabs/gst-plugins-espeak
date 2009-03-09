@@ -115,12 +115,12 @@ gst_espeak_class_init(GstEspeakClass * klass)
                 "Text to pronounce", NULL,
                 G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_PITCH,
-            g_param_spec_uint("pitch", "Pitch adjustment",
-                "Pitch adjustment", 0, 99, ESPEAK_DEFAULT_PITCH,
+            g_param_spec_int("pitch", "Pitch adjustment",
+                "Pitch adjustment", -100, 100, 0,
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_RATE,
-            g_param_spec_uint("rate", "Speed in words per minute",
-                "Speed in words per minute", 80, 390, ESPEAK_DEFAULT_RATE,
+            g_param_spec_int("rate", "Speed in words per minute",
+                "Speed in words per minute", -100, 100, 0,
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_VOICE,
             g_param_spec_string("voice", "Current voice",
@@ -128,7 +128,7 @@ gst_espeak_class_init(GstEspeakClass * klass)
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_GAP,
             g_param_spec_uint("gap", "Gap",
-                "Word gap", 0, G_MAXINT, ESPEAK_DEFAULT_GAP,
+                "Word gap", 0, G_MAXINT, 0,
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_TRACK,
             g_param_spec_uint("track", "Track",
@@ -153,8 +153,8 @@ static void
 gst_espeak_init (GstEspeak * self,
     GstEspeakClass * gclass)
 {
-    self->pitch = ESPEAK_DEFAULT_PITCH;
-    self->rate = ESPEAK_DEFAULT_RATE;
+    self->pitch = 0;
+    self->rate = 0;
     self->voice = g_strdup(ESPEAK_DEFAULT_VOICE);
     self->voices = espeak_get_voices();
     self->speak = espeak_new(GST_ELEMENT(self));
@@ -172,7 +172,6 @@ gst_espeak_init (GstEspeak * self,
 static void
 gst_espeak_finalize(GObject * self_)
 {
-fprintf(stderr, "0!!!!!!\n");
     GstEspeak *self = GST_ESPEAK(self_);
 
     gst_caps_unref(self->caps);         self->caps = NULL;
@@ -196,11 +195,11 @@ gst_espeak_set_property(GObject *object, guint prop_id,
             espeak_in(self->speak, g_value_get_string(value));
             break;
         case PROP_PITCH:
-            self->pitch = g_value_get_uint(value);
+            self->pitch = g_value_get_int(value);
             espeak_set_pitch(self->speak, self->pitch);
             break;
         case PROP_RATE:
-            self->rate = g_value_get_uint(value);
+            self->rate = g_value_get_int(value);
             espeak_set_rate(self->speak, self->rate);
             break;
         case PROP_VOICE:
@@ -283,7 +282,6 @@ gst_espeak_start(GstBaseSrc * self_)
 static gboolean
 gst_espeak_stop(GstBaseSrc * self)
 {
-    GST_DEBUG("!!!!!!!!!!");
     return TRUE;
 }
 
