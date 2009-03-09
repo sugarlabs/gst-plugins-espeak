@@ -262,7 +262,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
     inline gsize whole(Espin *spin, gsize size_to_play)
     {
         gsize spin_size = g_memory_output_stream_get_data_size(spin->sound);
-        return MIN(size_to_play, spin_size);
+        return MIN(size_to_play, spin_size - spin->sound_offset);
     }
 
     inline gsize word(Econtext *self, Espin *spin, gsize size_to_play)
