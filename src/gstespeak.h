@@ -48,7 +48,7 @@ struct _GstEspeak
     gchar *voice;
     guint gap;
     guint track;
-    gchar **voices;
+    GValueArray *voices;
     GstCaps *caps;
     gboolean poll;
 };

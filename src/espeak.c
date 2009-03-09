@@ -126,7 +126,7 @@ static GCond  *process_cond = NULL;
 static GSList *process_queue = NULL;
 
 static gint espeak_sample_rate = 0;
-static const espeak_VOICE **espeak_voices = NULL;
+static GValueArray *espeak_voices = NULL;
 static GOutputStream *espeak_buffer = NULL;
 static GArray *espeak_events = NULL;
 
@@ -551,21 +551,11 @@ espeak_get_sample_rate()
     return espeak_sample_rate;
 }
 
-gchar**
+GValueArray*
 espeak_get_voices()
 {
-    gsize count = 0;
-    const espeak_VOICE **i;
-    char **j, **out;
-
     init();
-
-    for (i = espeak_voices; *i; ++i) ++count;
-    out = j = g_new0(gchar*, count); 
-    for (i = espeak_voices; *i; ++i)
-        *j++ = g_strconcat((*i)->name, ":", (*i)->languages+1, NULL);
-
-    return out;
+    return g_value_array_copy(espeak_voices);
 }
 
 void
@@ -683,13 +673,50 @@ init()
     if (initialized == 0)
     {
         ++initialized;
-        espeak_sample_rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS,
-                SYNC_BUFFER_SIZE, NULL, 0);
-        espeak_SetSynthCallback(synth_cb);
-        espeak_voices = espeak_ListVoices(NULL);
 
         process_lock = g_mutex_new();
         process_cond = g_cond_new();
         process_tid = g_thread_create(process, NULL, FALSE, NULL);
+
+        espeak_sample_rate = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS,
+                SYNC_BUFFER_SIZE, NULL, 0);
+        espeak_SetSynthCallback(synth_cb);
+
+        gsize count = 0;
+        const espeak_VOICE **i;
+        const espeak_VOICE **voices = espeak_ListVoices(NULL);
+
+        for (i = voices; *i; ++i)
+            ++count;
+        espeak_voices = g_value_array_new(count);
+
+        for (i = voices; *i; ++i)
+        {
+            GValueArray *voice = g_value_array_new(2);
+
+            GValue name = { 0 };
+            g_value_init(&name, G_TYPE_STRING);
+            g_value_set_static_string(&name, (*i)->name);
+            g_value_array_append(voice, &name);
+
+            char *dialect_str = strchr((*i)->languages + 1, '-');
+            if (dialect_str) *dialect_str++ = 0;
+
+            GValue lang = { 0 };
+            g_value_init(&lang, G_TYPE_STRING);
+            g_value_set_static_string(&lang, (*i)->languages + 1);
+            g_value_array_append(voice, &lang);
+
+            GValue dialect = { 0 };
+            g_value_init(&dialect, G_TYPE_STRING);
+            g_value_set_static_string(&dialect, dialect_str ? dialect_str : "none");
+            g_value_array_append(voice, &dialect);
+
+            GValue voice_value = { 0 };
+            g_value_init(&voice_value, G_TYPE_VALUE_ARRAY);
+            g_value_set_boxed_take_ownership(&voice_value, voice);
+            g_value_array_append(espeak_voices, &voice_value);
+            g_value_unset(&voice_value);
+        }
     }
 }

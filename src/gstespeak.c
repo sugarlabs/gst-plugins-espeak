@@ -136,7 +136,7 @@ gst_espeak_class_init(GstEspeakClass * klass)
                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_VOICES,
             g_param_spec_boxed("voices", "List of voices",
-                "List of voices", G_TYPE_STRV,
+                "List of voices", G_TYPE_VALUE_ARRAY,
                 G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property(gobject_class, PROP_CAPS,
             g_param_spec_boxed("caps", "Caps",
@@ -175,10 +175,10 @@ gst_espeak_finalize(GObject * self_)
 fprintf(stderr, "0!!!!!!\n");
     GstEspeak *self = GST_ESPEAK(self_);
 
-    gst_caps_unref(self->caps); self->caps = NULL;
-    espeak_unref(self->speak);  self->speak = NULL;
-    g_free(self->voice);        self->voice = NULL;
-    g_strfreev(self->voices);   self->voices = NULL;
+    gst_caps_unref(self->caps);         self->caps = NULL;
+    espeak_unref(self->speak);          self->speak = NULL;
+    g_free(self->voice);                self->voice = NULL;
+    g_value_array_free(self->voices);   self->voices = NULL;
 
     G_OBJECT_CLASS(parent_class)->dispose(self_);
 }
