@@ -28,15 +28,12 @@
 #define SPIN_FRAME_SIZE 255
 
 #include "espeak.h"
-#include "text.h"
-#include "slist.h"
 
 typedef enum
 {
     IN      = 1,
-    PROCESS = 2,
-    OUT     = 4,
-    PLAY    = 8
+    OUT     = 2,
+    PLAY    = 4
 } SpinState;
 
 typedef enum
@@ -46,16 +43,17 @@ typedef enum
 
 typedef struct
 {
-    volatile SpinState state;
+    Econtext *context;
 
-    Text text;
-    goffset last_word;
+    volatile SpinState state;
 
     GMemoryOutputStream *sound;
     goffset sound_offset;
 
     GArray *events;
     goffset events_pos;
+
+    goffset last_word;
     goffset mark_offset;
     const gchar *mark_name;
 } Espin;
@@ -64,12 +62,13 @@ struct _Econtext
 {
     volatile ContextState state;
 
+    gchar *text;
+    goffset text_offset;
+    gsize text_len;
+
     Espin queue[SPIN_QUEUE_SIZE];
     Espin *in;
-    Espin *process;
     Espin *out;
-
-    SList in_queue;
 
     GSList *process_chunk;
 
@@ -127,8 +126,6 @@ static GSList *process_queue = NULL;
 
 static gint espeak_sample_rate = 0;
 static GValueArray *espeak_voices = NULL;
-static GOutputStream *espeak_buffer = NULL;
-static GArray *espeak_events = NULL;
 
 // -----------------------------------------------------------------------------
 
@@ -142,17 +139,17 @@ espeak_new(GstElement *emitter)
 
     for (i = SPIN_QUEUE_SIZE; i--;)
     {
-        self->queue[i].state = IN;
-        self->queue[i].sound = G_MEMORY_OUTPUT_STREAM(
-                g_memory_output_stream_new(NULL, 0, realloc, free));
-        self->queue[i].events = g_array_new(FALSE, FALSE, sizeof(espeak_EVENT));
+        Espin *spin = &self->queue[i];
+
+        spin->context = self;
+        spin->state = IN;
+        spin->sound = G_MEMORY_OUTPUT_STREAM(g_memory_output_stream_new(
+                    NULL, 0, realloc, free));
+        spin->events = g_array_new(FALSE, FALSE, sizeof(espeak_EVENT));
     }
 
     self->in = self->queue;
-    self->process = self->queue;
     self->out = self->queue;
-
-    slist_new(&self->in_queue);
 
     self->process_chunk = g_slist_alloc();
     self->process_chunk->data = self;
@@ -186,11 +183,9 @@ espeak_unref(Econtext *self)
         g_output_stream_close(G_OUTPUT_STREAM(self->queue[i].sound),
                 NULL, NULL);
         g_object_unref(self->queue[i].sound);
-        text_unref(&self->queue[i].text);
         g_array_free(self->queue[i].events, TRUE);
     }
 
-    slist_free(&self->in_queue);
     g_slist_free(self->process_chunk);
 
     gst_object_unref(self->bus);
@@ -202,58 +197,19 @@ espeak_unref(Econtext *self)
 
 // in/out ----------------------------------------------------------------------
 
-static void
-in_spinning(Econtext *self, Espin **spin, Text *text)
-{
-    GST_DEBUG("[%p] text.body=%s text.offset=%ld text.frame_len=%ld",
-            self, text->body, text->offset, text->frame_len);
-
-    gboolean chunked = FALSE;
-
-    while (!text_eot(text))
-    {
-        text_unref(&(*spin)->text);
-
-        text_chunk(text, &(*spin)->text, SPIN_FRAME_SIZE);
-        g_atomic_int_set(&(*spin)->state, PROCESS);
-        spinning(self->queue, spin);
-        chunked = TRUE;
-
-        if (g_atomic_int_get(&(*spin)->state) != IN)
-            break;
-    }
-
-    if (chunked)
-        process_push(self);
-
-    GST_DEBUG("[%p] text.body=%s text.offset=%ld text.frame_len=%ld",
-            self, text->body, text->offset, text->frame_len);
-}
-
 void
-espeak_in(Econtext *self, const gchar *str_)
+espeak_in(Econtext *self, const gchar *text)
 {
-    GST_DEBUG("[%p] str=%s", self, str_);
+    GST_DEBUG("[%p] text=%s", self, text);
 
-    if (str_ == NULL || *str_ == 0)
+    if (text == NULL || *text == 0)
         return;
 
-    Text *text = text_new(str_);
+    self->text = g_strdup(text);
+    self->text_offset = 0;
+    self->text_len = strlen(text);
 
-    if (g_atomic_int_get(&self->in->state) != IN)
-    {
-        // in_queue should be not empty at this point
-        slist_push(&self->in_queue, text);
-        return;
-    }
-
-    in_spinning(self, &self->in, text);
-
-    if (!text_eot(text))
-    {
-        GST_DEBUG("[%p] text_len=%d", self, text_len(text));
-        slist_push(&self->in_queue, text);
-    }
+    process_push(self);
 }
 
 GstBuffer*
@@ -292,12 +248,12 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
             else if (i->type == espeakEVENT_WORD)
             {
                 sample_offset = i[1].sample*2;
-                text_offset = spin->text.offset + i->text_position - 1;
+                text_offset = i->text_position;
                 text_len = i->length;
 
                 GST_DEBUG("sample_offset=%d txt_offset=%d txt_len=%d, txt=%s",
                         sample_offset, text_offset, text_len,
-                        spin->text.body + text_offset);
+                        self->text + text_offset);
                 break;
             }
         }
@@ -356,11 +312,11 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
                 if (i->sample == 0)
                 {
                     if (spin->sound_offset == 0)
-                        emit_mark(self, i->text_position - 1, i->id.name);
+                        emit_mark(self, i->text_position, i->id.name);
                     continue;
                 }
 
-                mark_offset = i->text_position - 1;
+                mark_offset = i->text_position;
                 mark_name = i->id.name;
                 sample_offset = i->sample*2;
                 break;
@@ -403,7 +359,8 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
 
     spin->sound_offset += size_to_play;
 
-    GST_DEBUG("size_to_play=%ld tell=%ld", size_to_play, spin->sound_offset);
+    GST_DEBUG("out=%p size_to_play=%ld tell=%ld", GST_BUFFER_DATA(out),
+            size_to_play, spin->sound_offset);
 
     return out;
 }
@@ -418,8 +375,7 @@ espeak_out(Econtext *self, gsize size_to_play)
         g_mutex_lock(process_lock);
             while ((g_atomic_int_get(&self->out->state) & (PLAY|OUT)) == 0)
             {
-                if ((self->state & INPROCESS) == 0 &&
-                        slist_empty(&self->in_queue))
+                if ((self->state & INPROCESS) == 0)
                 {
                     GST_DEBUG("[%p]", self);
                     g_mutex_unlock(process_lock);
@@ -433,47 +389,28 @@ espeak_out(Econtext *self, gsize size_to_play)
         Espin *spin = self->out;
         gsize spin_size = g_memory_output_stream_get_data_size(spin->sound);
 
-        GST_DEBUG("[%p] spin->sound_offset=%ld spin_size=%ld spin->body=%s",
-                self, spin->sound_offset, spin_size,
-                spin->text.body + spin->text.frame_len);
+        GST_DEBUG("[%p] spin->sound_offset=%ld spin_size=%ld",
+                self, spin->sound_offset, spin_size);
 
         if (g_atomic_int_get(&spin->state) == PLAY &&
                 spin->sound_offset >= spin_size)
         {
-            GSList *text_link = slist_pop_link(&self->in_queue);
-
-            if (text_link)
-            {
-                Text *text = text_link->data;
-                in_spinning(self, &self->out, text);
-
-                GST_DEBUG("[%p] text_eot=%d", self, text_eot(text));
-
-                if (text_eot(text))
-                    g_slist_free(text_link);
-                else
-                    slist_push_link(&self->in_queue, text_link);
-            }
-            else
-            {
-                GST_DEBUG("[%p]", self);
-                g_atomic_int_set(&spin->state, IN);
-                spinning(self->queue, &self->out);
-            }
-
+            g_atomic_int_set(&spin->state, IN);
+            process_push(self);
+            spinning(self->queue, &self->out);
             continue;
         }
 
         return play(self, spin, size_to_play);
     }
 
+    GST_DEBUG("[%p]", self);
     return NULL;
 }
 
 void
 espeak_reset(Econtext *self)
 {
-    slist_clean(&self->in_queue);
     process_pop(self);
 
     GstBuffer *buf;
@@ -483,6 +420,12 @@ espeak_reset(Econtext *self)
     int i;
     for (i = SPIN_QUEUE_SIZE; i--;)
         g_atomic_int_set(&self->queue[i].state, IN);
+
+    if (self->text)
+    {
+        g_free(self->text);
+        self->text = NULL;
+    }
 }
 
 // espeak ----------------------------------------------------------------------
@@ -493,26 +436,49 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
     if (data == NULL)
         return 0;
 
+    Espin *spin = events->user_data;
+
     if (numsamples > 0)
     {
-        g_output_stream_write(espeak_buffer, data, numsamples*2, NULL, NULL);
+        g_output_stream_write(G_OUTPUT_STREAM(spin->sound), data, numsamples*2,
+                NULL, NULL);
 
-        if (espeak_events)
+        goffset last_offset = spin->context->text_offset;
+
+        espeak_EVENT *i;
+        for (i = events; i->type != espeakEVENT_LIST_TERMINATED; ++i)
         {
-            for (; events->type != espeakEVENT_LIST_TERMINATED; ++events)
+            last_offset = i->text_position = MAX(last_offset, i->text_position +
+                    spin->context->text_offset - 1);
+
+            if (i->type == espeakEVENT_MARK)
             {
-                GST_DEBUG("type=%d text_position=%d length=%d "
-                          "audio_position=%d sample=%d",
-                        events->type, events->text_position, events->length,
-                        events->audio_position, events->sample*2);
-                g_array_append_val(espeak_events, *events);
+                gchar *pos = spin->context->text + i->text_position;
+                gint turn = 0;
+
+                for (; pos > spin->context->text; --pos)
+                    if (*pos == '"')
+                    {
+                        if (turn++ == 0)
+                            *pos = 0;
+                        else
+                        {
+                            i->id.name = pos + 1;
+                            break;
+                        }
+                    }
             }
+
+            GST_DEBUG("type=%d text_position=%d length=%d "
+                      "audio_position=%d sample=%d",
+                    i->type, i->text_position, i->length,
+                    i->audio_position, i->sample*2);
+
+            g_array_append_val(spin->events, *i);
         }
     }
 
-    GST_DEBUG("numsamples=%d data_size=%ld", numsamples*2,
-            g_memory_output_stream_get_data_size(G_MEMORY_OUTPUT_STREAM(
-                    espeak_buffer)));
+    GST_DEBUG("numsamples=%d", numsamples*2);
 
     return 0;
 }
@@ -520,14 +486,6 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
 static void
 synth(Econtext *self, Espin *spin)
 {
-    gchar *text = text_first(&spin->text);
-    gchar *last = text_last(&spin->text);
-
-    gchar old_last_char = *last;
-    *last = 0;
-
-    GST_DEBUG("[%p] text='%s' last=%d", self, text, last-text);
-
     g_seekable_seek(G_SEEKABLE(spin->sound), 0, G_SEEK_SET,
             NULL, NULL);
     g_array_set_size(spin->events, 0);
@@ -544,20 +502,62 @@ synth(Econtext *self, Espin *spin)
 
     gint track = g_atomic_int_get(&self->track);
 
-    espeak_buffer = G_OUTPUT_STREAM(spin->sound);
-    espeak_events = track == ESPEAK_TRACK_NONE ? NULL : spin->events;
-
     gint flags = espeakCHARS_UTF8;
     if (track == ESPEAK_TRACK_MARK)
         flags |= espeakSSML;
 
-    espeak_Synth(text, text_len(&spin->text), 0, POS_WORD, 0, flags,
-            NULL, NULL);
+    gchar *text = self->text + self->text_offset;
+    gsize last = SPIN_FRAME_SIZE;
+
+    while (last < SPIN_FRAME_SIZE*2 && text[last])
+        if (g_ascii_isspace(text[last]))
+            break;
+        else
+            ++last;
+
+    if (track == ESPEAK_TRACK_MARK)
+    {
+        goffset last_mark = SPIN_FRAME_SIZE;
+
+        for (; last_mark < SPIN_FRAME_SIZE*2 && text[last_mark]; ++last_mark)
+        {
+            if (strncmp("<mark", text + last_mark, 5) == 0)
+            {
+                last = last_mark;
+                break;
+            }
+            if (strncmp("/>", text + last_mark, 2) != 0)
+                continue;
+            for (last_mark = SPIN_FRAME_SIZE; last_mark > 0; --last_mark)
+                if (strncmp("<mark", text + last_mark, 5) == 0)
+                {
+                    last = last_mark;
+                    break;
+                }
+            break;
+        }
+    }
+
+    gchar old_last = text[last];
+    text[last] = 0;
+
+    GST_DEBUG("[%p] text_offset=%ld last=%ld", self, self->text_offset, last);
+
+    espeak_Synth(self->text + self->text_offset,
+            last + 1, 0, POS_CHARACTER, 0, flags, NULL, spin);
+
+    text[last] = old_last;
+
+    if (spin->events->len)
+    {
+        goffset i = self->text_offset = g_array_index(spin->events,
+                espeak_EVENT, spin->events->len-1).text_position + 1;
+        self->text_offset = i + (g_ascii_isspace(self->text[i]) ? 1 : 0);
+    }
 
     espeak_EVENT last_event = { espeakEVENT_LIST_TERMINATED };
     last_event.sample = g_memory_output_stream_get_data_size(spin->sound) / 2;
     g_array_append_val(spin->events, last_event);
-    *last = old_last_char;
 }
 
 gint
@@ -631,25 +631,32 @@ process(gpointer data)
         while (process_queue)
         {
             Econtext *context = (Econtext*)process_queue->data;
-            Espin *spin = context->process;
+            Espin *spin = context->in;
 
             process_queue = g_slist_remove_link(process_queue, process_queue);
 
-            synth(context, spin);
-
-            g_atomic_int_set(&spin->state, OUT);
-            spinning(context->queue, &context->process);
-
-            if (g_atomic_int_get(&context->process->state) == PROCESS)
-            {
-                GST_DEBUG("[%p]", context);
-                process_queue = g_slist_concat(process_queue,
-                        context->process_chunk);
-            }
-            else
+            if (context->text_offset >= context->text_len)
             {
                 GST_DEBUG("[%p]", context);
                 context->state &= ~INPROCESS;
+            }
+            else
+            {
+                synth(context, spin);
+                g_atomic_int_set(&spin->state, OUT);
+                spinning(context->queue, &context->in);
+
+                if (g_atomic_int_get(&context->in->state) == IN)
+                {
+                    GST_DEBUG("[%p]", context);
+                    process_queue = g_slist_concat(process_queue,
+                            context->process_chunk);
+                }
+                else
+                {
+                    GST_DEBUG("[%p]", context);
+                    context->state &= ~INPROCESS;
+                }
             }
         }
 
