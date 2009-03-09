@@ -32,13 +32,19 @@ slist_new(SList *self)
 }
 
 inline void
-slist_free(SList *self)
+slist_clean(SList *self)
 {
     GSList *i;
-
+    g_mutex_lock(self->lock);
     for (i = self->list; i; i = g_slist_next(i))
         text_unref(i->data);
+    g_mutex_unlock(self->lock);
+}
 
+inline void
+slist_free(SList *self)
+{
+    slist_clean(self);
     g_slist_free(self->list);
     g_mutex_free(self->lock);
 }

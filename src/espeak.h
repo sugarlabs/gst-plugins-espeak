@@ -40,5 +40,6 @@ void            espeak_set_track(Econtext*, guint);
 
 void            espeak_in(Econtext*, const gchar *str);
 GstBuffer*      espeak_out(Econtext*, gsize size_to_play);
+void            espeak_reset(Econtext*);
 
 #endif

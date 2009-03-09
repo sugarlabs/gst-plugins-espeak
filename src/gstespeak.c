@@ -267,10 +267,7 @@ gst_espeak_create(GstBaseSrc * self_, guint64 offset, guint size,
     if (*buf)
         return GST_FLOW_OK;
     else
-    {
-        //gst_element_set_state(GST_ELEMENT(self), GST_STATE_NULL);
         return GST_FLOW_UNEXPECTED;
-    }
 }
 
 static gboolean
@@ -280,8 +277,10 @@ gst_espeak_start(GstBaseSrc * self_)
 }
 
 static gboolean
-gst_espeak_stop(GstBaseSrc * self)
+gst_espeak_stop(GstBaseSrc * self_)
 {
+    GstEspeak *self = GST_ESPEAK(self_);
+    espeak_reset(self->speak);
     return TRUE;
 }
 

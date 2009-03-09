@@ -177,7 +177,7 @@ espeak_unref(Econtext *self)
 {
     GST_DEBUG("[%p]", self);
 
-    process_pop(self);
+    espeak_reset(self);
 
     gint i;
 
@@ -212,6 +212,8 @@ in_spinning(Econtext *self, Espin **spin, Text *text)
 
     while (!text_eot(text))
     {
+        text_unref(&(*spin)->text);
+
         text_chunk(text, &(*spin)->text, SPIN_FRAME_SIZE);
         g_atomic_int_set(&(*spin)->state, PROCESS);
         spinning(self->queue, spin);
@@ -438,8 +440,6 @@ espeak_out(Econtext *self, gsize size_to_play)
         if (g_atomic_int_get(&spin->state) == PLAY &&
                 spin->sound_offset >= spin_size)
         {
-            text_unref(&spin->text);
-
             GSList *text_link = slist_pop_link(&self->in_queue);
 
             if (text_link)
@@ -468,6 +468,21 @@ espeak_out(Econtext *self, gsize size_to_play)
     }
 
     return NULL;
+}
+
+void
+espeak_reset(Econtext *self)
+{
+    slist_clean(&self->in_queue);
+    process_pop(self);
+
+    GstBuffer *buf;
+    while ((buf = espeak_out(self, SYNC_BUFFER_SIZE)) != NULL)
+        gst_buffer_unref(buf);
+
+    int i;
+    for (i = SPIN_QUEUE_SIZE; i--;)
+        g_atomic_int_set(&self->queue[i].state, IN);
 }
 
 // espeak ----------------------------------------------------------------------
@@ -670,6 +685,7 @@ process_pop(Econtext *context)
     g_mutex_lock(process_lock);
 
     process_queue = g_slist_remove_link(process_queue, context->process_chunk);
+    context->state &= ~INPROCESS;
     g_cond_broadcast(process_cond);
 
     g_mutex_unlock(process_lock);
