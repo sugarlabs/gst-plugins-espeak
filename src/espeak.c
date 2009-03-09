@@ -443,15 +443,12 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
         g_output_stream_write(G_OUTPUT_STREAM(spin->sound), data, numsamples*2,
                 NULL, NULL);
 
-        goffset last_offset = spin->context->text_offset;
-
         espeak_EVENT *i;
         for (i = events; i->type != espeakEVENT_LIST_TERMINATED; ++i)
         {
-            last_offset = i->text_position = MAX(last_offset, i->text_position +
-                    spin->context->text_offset - 1);
-
-            if (i->type == espeakEVENT_MARK)
+            if (i->type == espeakEVENT_WORD)
+                --i->text_position;
+            else if (i->type == espeakEVENT_MARK)
             {
                 gchar *pos = spin->context->text + i->text_position;
                 gint turn = 0;
@@ -506,53 +503,15 @@ synth(Econtext *self, Espin *spin)
     if (track == ESPEAK_TRACK_MARK)
         flags |= espeakSSML;
 
-    gchar *text = self->text + self->text_offset;
-    gsize last = SPIN_FRAME_SIZE;
+    GST_DEBUG("[%p] text_offset=%ld", self, self->text_offset);
 
-    while (last < SPIN_FRAME_SIZE*2 && text[last])
-        if (g_ascii_isspace(text[last]))
-            break;
-        else
-            ++last;
-
-    if (track == ESPEAK_TRACK_MARK)
-    {
-        goffset last_mark = SPIN_FRAME_SIZE;
-
-        for (; last_mark < SPIN_FRAME_SIZE*2 && text[last_mark]; ++last_mark)
-        {
-            if (strncmp("<mark", text + last_mark, 5) == 0)
-            {
-                last = last_mark;
-                break;
-            }
-            if (strncmp("/>", text + last_mark, 2) != 0)
-                continue;
-            for (last_mark = SPIN_FRAME_SIZE; last_mark > 0; --last_mark)
-                if (strncmp("<mark", text + last_mark, 5) == 0)
-                {
-                    last = last_mark;
-                    break;
-                }
-            break;
-        }
-    }
-
-    gchar old_last = text[last];
-    text[last] = 0;
-
-    GST_DEBUG("[%p] text_offset=%ld last=%ld", self, self->text_offset, last);
-
-    espeak_Synth(self->text + self->text_offset,
-            last + 1, 0, POS_CHARACTER, 0, flags, NULL, spin);
-
-    text[last] = old_last;
+    espeak_Synth(self->text, self->text_len + 1, 0, POS_CHARACTER, 0, flags,
+            NULL, spin);
 
     if (spin->events->len)
     {
-        goffset i = self->text_offset = g_array_index(spin->events,
+        self->text_offset = g_array_index(spin->events,
                 espeak_EVENT, spin->events->len-1).text_position + 1;
-        self->text_offset = i + (g_ascii_isspace(self->text[i]) ? 1 : 0);
     }
 
     espeak_EVENT last_event = { espeakEVENT_LIST_TERMINATED };
