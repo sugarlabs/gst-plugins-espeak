@@ -56,6 +56,7 @@ typedef struct
     goffset last_word;
     goffset mark_offset;
     const gchar *mark_name;
+    goffset last_mark;
 } Espin;
 
 struct _Econtext
@@ -444,12 +445,25 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
                 NULL, NULL);
 
         espeak_EVENT *i;
+
         for (i = events; i->type != espeakEVENT_LIST_TERMINATED; ++i)
         {
             if (i->type == espeakEVENT_WORD)
                 --i->text_position;
             else if (i->type == espeakEVENT_MARK)
             {
+                // suppress failed text_position values
+                if (spin->last_mark)
+                {
+                    goffset pos = strstr(spin->context->text +
+                            spin->last_mark, "/>") - spin->context->text + 2;
+                    if (i->text_position <= spin->last_mark ||
+                            pos > i->text_position)
+                        i->text_position = pos;
+                }
+
+                spin->last_mark = i->text_position;
+
                 gchar *pos = spin->context->text + i->text_position;
                 gint turn = 0;
 
@@ -491,6 +505,7 @@ synth(Econtext *self, Espin *spin)
     spin->mark_offset = -1;
     spin->mark_name = NULL;
     spin->last_word = -1;
+    spin->last_mark = 0;
 
     espeak_SetParameter(espeakPITCH, g_atomic_int_get(&self->pitch), 0);
     espeak_SetParameter(espeakRATE, g_atomic_int_get(&self->rate), 0);
