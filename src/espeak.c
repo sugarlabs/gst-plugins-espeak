@@ -18,7 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <glib.h>
-#include <gio/gio.h>
 #include <gst/gst.h>
 #include <espeak/speak_lib.h>
 
@@ -47,7 +46,7 @@ typedef struct
 
     volatile SpinState state;
 
-    GMemoryOutputStream *sound;
+    GByteArray *sound;
     goffset sound_offset;
 
     GArray *events;
@@ -144,8 +143,7 @@ espeak_new(GstElement *emitter)
 
         spin->context = self;
         spin->state = IN;
-        spin->sound = G_MEMORY_OUTPUT_STREAM(g_memory_output_stream_new(
-                    NULL, 0, realloc, free));
+        spin->sound = g_byte_array_new();
         spin->events = g_array_new(FALSE, FALSE, sizeof(espeak_EVENT));
     }
 
@@ -181,9 +179,7 @@ espeak_unref(Econtext *self)
 
     for (i = SPIN_QUEUE_SIZE; i--;)
     {
-        g_output_stream_close(G_OUTPUT_STREAM(self->queue[i].sound),
-                NULL, NULL);
-        g_object_unref(self->queue[i].sound);
+        g_byte_array_free(self->queue[i].sound, TRUE);
         g_array_free(self->queue[i].events, TRUE);
     }
 
@@ -218,13 +214,13 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
 {
     inline gsize whole(Espin *spin, gsize size_to_play)
     {
-        gsize spin_size = g_memory_output_stream_get_data_size(spin->sound);
+        gsize spin_size = spin->sound->len;
         return MIN(size_to_play, spin_size - spin->sound_offset);
     }
 
     inline gsize word(Econtext *self, Espin *spin, gsize size_to_play)
     {
-        gsize spin_size = g_memory_output_stream_get_data_size(spin->sound);
+        gsize spin_size = spin->sound->len;
         size_to_play = MIN(size_to_play, spin_size);
 
         goffset event;
@@ -287,7 +283,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
             spin->mark_name = NULL;
         }
 
-        gsize spin_size = g_memory_output_stream_get_data_size(spin->sound);
+        gsize spin_size = spin->sound->len;
         size_to_play = MIN(size_to_play, spin_size);
 
         goffset event;
@@ -353,9 +349,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
     }
 
     GstBuffer *out = gst_buffer_new();
-    GST_BUFFER_DATA(out) =
-            (guchar*)g_memory_output_stream_get_data(spin->sound) +
-                spin->sound_offset;
+    GST_BUFFER_DATA(out) = spin->sound->data + spin->sound_offset;
     GST_BUFFER_SIZE(out) = size_to_play;
 
     spin->sound_offset += size_to_play;
@@ -388,7 +382,7 @@ espeak_out(Econtext *self, gsize size_to_play)
         g_mutex_unlock(process_lock);
 
         Espin *spin = self->out;
-        gsize spin_size = g_memory_output_stream_get_data_size(spin->sound);
+        gsize spin_size = spin->sound->len;
 
         GST_DEBUG("[%p] spin->sound_offset=%ld spin_size=%ld",
                 self, spin->sound_offset, spin_size);
@@ -441,8 +435,7 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
 
     if (numsamples > 0)
     {
-        g_output_stream_write(G_OUTPUT_STREAM(spin->sound), data, numsamples*2,
-                NULL, NULL);
+        g_byte_array_append(spin->sound, (const guint8*)data, numsamples*2);
 
         espeak_EVENT *i;
 
@@ -497,8 +490,7 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
 static void
 synth(Econtext *self, Espin *spin)
 {
-    g_seekable_seek(G_SEEKABLE(spin->sound), 0, G_SEEK_SET,
-            NULL, NULL);
+    g_byte_array_set_size(spin->sound, 0);
     g_array_set_size(spin->events, 0);
     spin->sound_offset = 0;
     spin->events_pos = 0;
@@ -530,7 +522,7 @@ synth(Econtext *self, Espin *spin)
     }
 
     espeak_EVENT last_event = { espeakEVENT_LIST_TERMINATED };
-    last_event.sample = g_memory_output_stream_get_data_size(spin->sound) / 2;
+    last_event.sample = spin->sound->len / 2;
     g_array_append_val(spin->events, last_event);
 }
 
