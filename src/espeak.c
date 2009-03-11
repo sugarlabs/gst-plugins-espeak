@@ -37,7 +37,8 @@ typedef enum
 
 typedef enum
 {
-    INPROCESS = 1
+    INPROCESS = 1,
+    CLOSE     = 2
 } ContextState;
 
 typedef struct
@@ -116,7 +117,7 @@ emit_mark(Econtext *self, guint offset, const gchar *mark)
 }
 
 static void init();
-static void process_push(Econtext*);
+static void process_push(Econtext*, gboolean);
 static void process_pop(Econtext*);
 
 static GThread *process_tid = NULL;
@@ -206,7 +207,7 @@ espeak_in(Econtext *self, const gchar *text)
     self->text_offset = 0;
     self->text_len = strlen(text);
 
-    process_push(self);
+    process_push(self, TRUE);
 }
 
 GstBuffer*
@@ -368,15 +369,20 @@ espeak_out(Econtext *self, gsize size_to_play)
     for (;;)
     {
         g_mutex_lock(process_lock);
-            while ((g_atomic_int_get(&self->out->state) & (PLAY|OUT)) == 0)
+            for (;;)
             {
-                if ((self->state & INPROCESS) == 0)
+                if (g_atomic_int_get(&self->out->state) & (PLAY|OUT))
+                    break;
+                if (self->state != INPROCESS)
                 {
-                    GST_DEBUG("[%p]", self);
+                    if (self->state == CLOSE)
+                        GST_DEBUG("[%p] sesseion is closed", self);
+                    else
+                        GST_DEBUG("[%p] nothing to play", self);
                     g_mutex_unlock(process_lock);
                     return NULL;
                 }
-                GST_DEBUG("[%p]", self);
+                GST_DEBUG("[%p] wait for processed data", self);
                 g_cond_wait(process_cond, process_lock);
             }
         g_mutex_unlock(process_lock);
@@ -391,7 +397,7 @@ espeak_out(Econtext *self, gsize size_to_play)
                 spin->sound_offset >= spin_size)
         {
             g_atomic_int_set(&spin->state, IN);
-            process_push(self);
+            process_push(self, FALSE);
             spinning(self->queue, &self->out);
             continue;
         }
@@ -609,9 +615,15 @@ process(gpointer data)
 
             process_queue = g_slist_remove_link(process_queue, process_queue);
 
+            if (context->state == CLOSE)
+            {
+                GST_DEBUG("[%p] session is closed", context);
+                continue;
+            }
+
             if (context->text_offset >= context->text_len)
             {
-                GST_DEBUG("[%p]", context);
+                GST_DEBUG("[%p] end of text to process", context);
                 context->state &= ~INPROCESS;
             }
             else
@@ -622,13 +634,13 @@ process(gpointer data)
 
                 if (g_atomic_int_get(&context->in->state) == IN)
                 {
-                    GST_DEBUG("[%p]", context);
+                    GST_DEBUG("[%p] continue to process data", context);
                     process_queue = g_slist_concat(process_queue,
                             context->process_chunk);
                 }
                 else
                 {
-                    GST_DEBUG("[%p]", context);
+                    GST_DEBUG("[%p] pause to process data", context);
                     context->state &= ~INPROCESS;
                 }
             }
@@ -643,34 +655,36 @@ process(gpointer data)
 }
 
 static void
-process_push(Econtext *context)
+process_push(Econtext *context, gboolean force_in)
 {
-    GST_DEBUG("[%p]", context);
+    GST_DEBUG("[%p] lock", context);
     g_mutex_lock(process_lock);
 
-    if ((context->state & INPROCESS) == 0)
+    if (context->state == CLOSE && !force_in)
+        GST_DEBUG("[%p] state=%d", context, context->state);
+    else if (context->state != INPROCESS)
     {
-        context->state |= INPROCESS;
+        context->state = INPROCESS;
         process_queue = g_slist_concat(process_queue, context->process_chunk);
         g_cond_broadcast(process_cond);
     }
 
     g_mutex_unlock(process_lock);
-    GST_DEBUG("[%p]", context);
+    GST_DEBUG("[%p] unlock", context);
 }
 
 static void
 process_pop(Econtext *context)
 {
-    GST_DEBUG("[%p]", context);
+    GST_DEBUG("[%p] lock", context);
     g_mutex_lock(process_lock);
 
     process_queue = g_slist_remove_link(process_queue, context->process_chunk);
-    context->state &= ~INPROCESS;
+    context->state = CLOSE;
     g_cond_broadcast(process_cond);
 
     g_mutex_unlock(process_lock);
-    GST_DEBUG("[%p]", context);
+    GST_DEBUG("[%p] unlock", context);
 }
 
 // -----------------------------------------------------------------------------
