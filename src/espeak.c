@@ -235,8 +235,6 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
 
         gsize event;
         gsize sample_offset = 0;
-        gsize text_offset = -1;
-        gsize text_len = 0;
 
         for (event = spin->events_pos; TRUE; ++event)
         {
@@ -248,27 +246,19 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
 
             if (i->type == espeakEVENT_LIST_TERMINATED)
             {
-                GST_DEBUG("i->sample=%d", i->sample*2);
                 sample_offset = spin_size;
                 break;
             }
             else if (i->type == espeakEVENT_WORD)
             {
+                if (i->text_position != spin->last_word)
+                {
+                    emit_word(self, i->text_position, i->length);
+                    spin->last_word = i->text_position;
+                }
                 sample_offset = i[1].sample*2;
-                text_offset = i->text_position;
-                text_len = i->length;
-
-                GST_DEBUG("sample_offset=%d txt_offset=%d txt_len=%d, txt=%s",
-                        sample_offset, text_offset, text_len,
-                        self->text + text_offset);
                 break;
             }
-        }
-
-        if (text_offset != -1 && text_offset > spin->last_word)
-        {
-            spin->last_word = text_offset + text_len;
-            emit_word(self, text_offset, text_len);
         }
 
         if (sample_offset - spin->sound_offset > size_to_play)
@@ -278,9 +268,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
             return size_to_play;
         }
 
-        if (text_offset != -1)
-            spin->events_pos = event + 1;
-
+        spin->events_pos = event + 1;
         return sample_offset - spin->sound_offset;
     }
 
@@ -289,7 +277,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
         if (spin->mark_name)
         {
             emit_mark(self, spin->mark_offset, spin->mark_name);
-            spin->mark_offset = -1;
+            spin->mark_offset = 0;
             spin->mark_name = NULL;
         }
 
@@ -518,7 +506,7 @@ synth(Econtext *self, Espin *spin)
     g_array_set_size(spin->events, 0);
     spin->sound_offset = 0;
     spin->events_pos = 0;
-    spin->mark_offset = -1;
+    spin->mark_offset = 0;
     spin->mark_name = NULL;
     spin->last_word = -1;
     spin->last_mark = 0;
