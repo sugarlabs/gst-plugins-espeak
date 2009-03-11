@@ -129,7 +129,12 @@ AC_SUBST(GST_PLUGIN_LDFLAGS)
 
 dnl check espeak dependencies
 AC_CHECK_LIB(espeak, espeak_Initialize,, AC_MSG_ERROR())
-PKG_CHECK_MODULES(GST_AUDIO, gstreamer-audio-0.10)
+PKG_CHECK_MODULES(GST_AUDIO, gstreamer-audio-0.10, HAVE_AUDIO=yes, HAVE_AUDIO=no)
+
+if test "x$HAVE_AUDIO" = "xno"; then
+    AC_CHECK_LIB(gstbase-0.10, gst_base_src_get_type,, AC_MSG_ERROR())
+    AC_CHECK_LIB(gstaudio-0.10, gst_base_audio_src_get_type,, AC_MSG_ERROR())
+fi
 
 AC_OUTPUT(Makefile m4/Makefile src/Makefile)
 
