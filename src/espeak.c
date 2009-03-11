@@ -48,15 +48,15 @@ typedef struct
     volatile SpinState state;
 
     GByteArray *sound;
-    goffset sound_offset;
+    gsize sound_offset;
 
     GArray *events;
-    goffset events_pos;
+    gsize events_pos;
 
-    goffset last_word;
-    goffset mark_offset;
+    gsize last_word;
+    gsize mark_offset;
     const gchar *mark_name;
-    goffset last_mark;
+    gsize last_mark;
 } Espin;
 
 struct _Econtext
@@ -64,7 +64,7 @@ struct _Econtext
     volatile ContextState state;
 
     gchar *text;
-    goffset text_offset;
+    gsize text_offset;
     gsize text_len;
 
     Espin queue[SPIN_QUEUE_SIZE];
@@ -116,8 +116,8 @@ emit_mark(Econtext *self, guint offset, const gchar *mark)
     gst_bus_post(self->bus, msg);
 }
 
-static inline goffset
-strbstr(Econtext *self, goffset pos, const gchar *needle, gsize needle_len)
+static inline gsize
+strbstr(Econtext *self, gsize pos, const gchar *needle, gsize needle_len)
 {
     for (pos -= needle_len; pos >= needle_len; --pos)
         if (strncmp(self->text + pos, needle, needle_len) == 0)
@@ -233,16 +233,16 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
         gsize spin_size = spin->sound->len;
         size_to_play = MIN(size_to_play, spin_size);
 
-        goffset event;
-        goffset sample_offset = 0;
-        goffset text_offset = -1;
+        gsize event;
+        gsize sample_offset = 0;
+        gsize text_offset = -1;
         gsize text_len = 0;
 
         for (event = spin->events_pos; TRUE; ++event)
         {
             espeak_EVENT *i = &g_array_index(spin->events, espeak_EVENT, event);
 
-            GST_DEBUG("size_to_play=%ld event=%ld "
+            GST_DEBUG("size_to_play=%zd event=%zd "
                       "i->type=%d i->text_position=%d",
                       size_to_play, event, i->type, i->text_position);
 
@@ -273,7 +273,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
 
         if (sample_offset - spin->sound_offset > size_to_play)
         {
-            GST_DEBUG("sample_offset=%ld spin->sound_offset=%ld",
+            GST_DEBUG("sample_offset=%zd spin->sound_offset=%zd",
                     sample_offset, spin->sound_offset);
             return size_to_play;
         }
@@ -296,8 +296,8 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
         gsize spin_size = spin->sound->len;
         size_to_play = MIN(size_to_play, spin_size);
 
-        goffset event;
-        goffset sample_offset = 0;
+        gsize event;
+        gsize sample_offset = 0;
         guint mark_offset = 0;
         const gchar *mark_name = NULL;
 
@@ -305,7 +305,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
         {
             espeak_EVENT *i = &g_array_index(spin->events, espeak_EVENT, event);
 
-            GST_DEBUG("size_to_play=%ld event=%ld "
+            GST_DEBUG("size_to_play=%zd event=%zd "
                       "i->type=%d i->text_position=%d",
                       size_to_play, event, i->type, i->text_position);
 
@@ -332,7 +332,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
 
         if (sample_offset - spin->sound_offset > size_to_play)
         {
-            GST_DEBUG("sample_offset=%ld spin->sound_offset=%ld",
+            GST_DEBUG("sample_offset=%zd spin->sound_offset=%zd",
                     sample_offset, spin->sound_offset);
             return size_to_play;
         }
@@ -364,7 +364,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
 
     spin->sound_offset += size_to_play;
 
-    GST_DEBUG("out=%p size_to_play=%ld tell=%ld", GST_BUFFER_DATA(out),
+    GST_DEBUG("out=%p size_to_play=%zd tell=%zd", GST_BUFFER_DATA(out),
             size_to_play, spin->sound_offset);
 
     return out;
@@ -399,7 +399,7 @@ espeak_out(Econtext *self, gsize size_to_play)
         Espin *spin = self->out;
         gsize spin_size = spin->sound->len;
 
-        GST_DEBUG("[%p] spin->sound_offset=%ld spin_size=%ld",
+        GST_DEBUG("[%p] spin->sound_offset=%zd spin_size=%zd",
                 self, spin->sound_offset, spin_size);
 
         if (g_atomic_int_get(&spin->state) == PLAY &&
@@ -466,6 +466,7 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
                     i->audio_position, i->sample*2);
 
 
+            // workaround to fix text_position related faults for mark events
             if (i->type == espeakEVENT_MARK)
             {
                 // suppress failed text_position values
@@ -475,7 +476,7 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
                             spin->last_mark, "/>");
                     if (eom)
                     {
-                        goffset pos = eom - self->text + 2;
+                        gsize pos = eom - self->text + 2;
 
                         if (i->text_position <= spin->last_mark ||
                                 pos > i->text_position)
@@ -487,7 +488,7 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
 
                 // point mark name to text substring instead of using
                 // espeak's allocated string
-                goffset l_quote, r_quote;
+                gsize l_quote, r_quote;
                 if ((r_quote = strbstr(self, i->text_position, "/>", 2)) != 0)
                     if ((r_quote = strbstr(self, r_quote, "\"", 1)) != 0)
                         if ((l_quote = strbstr(self, r_quote, "\"", 1)) != 0)
@@ -498,7 +499,8 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
 
             }
 
-            GST_DEBUG("text_position=%d", i->text_position);
+            GST_DEBUG("text_position=%d length=%d",
+                    i->text_position, i->length);
 
             g_array_append_val(spin->events, *i);
         }
@@ -532,7 +534,7 @@ synth(Econtext *self, Espin *spin)
     if (track == ESPEAK_TRACK_MARK)
         flags |= espeakSSML;
 
-    GST_DEBUG("[%p] text_offset=%ld", self, self->text_offset);
+    GST_DEBUG("[%p] text_offset=%zd", self, self->text_offset);
 
     espeak_Synth(self->text, self->text_len + 1, 0, POS_CHARACTER, 0, flags,
             NULL, spin);
