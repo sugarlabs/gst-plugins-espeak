@@ -116,6 +116,15 @@ emit_mark(Econtext *self, guint offset, const gchar *mark)
     gst_bus_post(self->bus, msg);
 }
 
+static inline goffset
+strbstr(Econtext *self, goffset pos, const gchar *needle, gsize needle_len)
+{
+    for (pos -= needle_len; pos >= needle_len; --pos)
+        if (strncmp(self->text + pos, needle, needle_len) == 0)
+            return pos;
+    return 0;
+}
+
 static void init();
 static void process_push(Econtext*, gboolean);
 static void process_pop(Econtext*);
@@ -438,6 +447,7 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
         return 0;
 
     Espin *spin = events->user_data;
+    Econtext *self = spin->context;
 
     if (numsamples > 0)
     {
@@ -447,24 +457,25 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
 
         for (i = events; i->type != espeakEVENT_LIST_TERMINATED; ++i)
         {
+            // convert to 0-based position
+            --i->text_position;
+
             GST_DEBUG("type=%d text_position=%d length=%d "
                       "audio_position=%d sample=%d",
                     i->type, i->text_position, i->length,
                     i->audio_position, i->sample*2);
 
 
-            if (i->type == espeakEVENT_WORD)
-                --i->text_position;
-            else if (i->type == espeakEVENT_MARK)
+            if (i->type == espeakEVENT_MARK)
             {
                 // suppress failed text_position values
                 if (spin->last_mark)
                 {
-                    const gchar *eom = strstr(spin->context->text +
+                    const gchar *eom = strstr(self->text +
                             spin->last_mark, "/>");
                     if (eom)
                     {
-                        goffset pos = eom - spin->context->text + 2;
+                        goffset pos = eom - self->text + 2;
 
                         if (i->text_position <= spin->last_mark ||
                                 pos > i->text_position)
@@ -474,20 +485,17 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
 
                 spin->last_mark = i->text_position;
 
-                gchar *pos = spin->context->text + i->text_position;
-                gint turn = 0;
-
-                for (; pos > spin->context->text; --pos)
-                    if (*pos == '"')
-                    {
-                        if (turn++ == 0)
-                            *pos = 0;
-                        else
+                // point mark name to text substring instead of using
+                // espeak's allocated string
+                goffset l_quote, r_quote;
+                if ((r_quote = strbstr(self, i->text_position, "/>", 2)) != 0)
+                    if ((r_quote = strbstr(self, r_quote, "\"", 1)) != 0)
+                        if ((l_quote = strbstr(self, r_quote, "\"", 1)) != 0)
                         {
-                            i->id.name = pos + 1;
-                            break;
+                            i->id.name = self->text + l_quote + 1;
+                            self->text[r_quote] = 0;
                         }
-                    }
+
             }
 
             GST_DEBUG("text_position=%d", i->text_position);
