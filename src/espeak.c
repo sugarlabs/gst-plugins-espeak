@@ -441,6 +441,12 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
 
         for (i = events; i->type != espeakEVENT_LIST_TERMINATED; ++i)
         {
+            GST_DEBUG("type=%d text_position=%d length=%d "
+                      "audio_position=%d sample=%d",
+                    i->type, i->text_position, i->length,
+                    i->audio_position, i->sample*2);
+
+
             if (i->type == espeakEVENT_WORD)
                 --i->text_position;
             else if (i->type == espeakEVENT_MARK)
@@ -448,11 +454,16 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
                 // suppress failed text_position values
                 if (spin->last_mark)
                 {
-                    goffset pos = strstr(spin->context->text +
-                            spin->last_mark, "/>") - spin->context->text + 2;
-                    if (i->text_position <= spin->last_mark ||
-                            pos > i->text_position)
-                        i->text_position = pos;
+                    const gchar *eom = strstr(spin->context->text +
+                            spin->last_mark, "/>");
+                    if (eom)
+                    {
+                        goffset pos = eom - spin->context->text + 2;
+
+                        if (i->text_position <= spin->last_mark ||
+                                pos > i->text_position)
+                            i->text_position = pos;
+                    }
                 }
 
                 spin->last_mark = i->text_position;
@@ -473,10 +484,7 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
                     }
             }
 
-            GST_DEBUG("type=%d text_position=%d length=%d "
-                      "audio_position=%d sample=%d",
-                    i->type, i->text_position, i->length,
-                    i->audio_position, i->sample*2);
+            GST_DEBUG("text_position=%d", i->text_position);
 
             g_array_append_val(spin->events, *i);
         }
