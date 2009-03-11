@@ -150,8 +150,7 @@ gst_espeak_class_init(GstEspeakClass * klass)
  * initialize instance structure
  */
 static void
-gst_espeak_init (GstEspeak * self,
-    GstEspeakClass * gclass)
+gst_espeak_init (GstEspeak *self, GstEspeakClass *gclass)
 {
     self->text = NULL;
     self->pitch = 0;
@@ -168,6 +167,8 @@ gst_espeak_init (GstEspeak * self,
             "depth", G_TYPE_INT, 16,
             "signed", G_TYPE_BOOLEAN, TRUE,
             NULL);
+
+    gst_base_src_set_format(GST_BASE_SRC(self), GST_FORMAT_DEFAULT);
 }
 
 static void
@@ -277,7 +278,10 @@ gst_espeak_create(GstBaseSrc * self_, guint64 offset, guint size,
     *buf = espeak_out(self->speak, size);
 
     if (*buf)
+    {
+        gst_buffer_set_caps(*buf, self->caps);
         return GST_FLOW_OK;
+    }
     else
         return GST_FLOW_UNEXPECTED;
 }
