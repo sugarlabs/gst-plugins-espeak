@@ -1,4 +1,4 @@
-AC_INIT([gst-plugins-espeak], [0.2])
+AC_INIT([gst-plugins-espeak], [0.3])
 
 dnl versions of gstreamer and plugins-base
 GST_MAJORMINOR=0.10
