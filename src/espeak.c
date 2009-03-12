@@ -457,20 +457,19 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
             if (i->type == espeakEVENT_MARK)
             {
                 // suppress failed text_position values
-                if (spin->last_mark)
+                const gchar *eom = strstr(self->text +
+                        spin->last_mark, "/>");
+                if (eom)
                 {
-                    const gchar *eom = strstr(self->text +
-                            spin->last_mark, "/>");
-                    if (eom)
-                    {
-                        int pos = eom - self->text + 2;
+                    int pos = eom - self->text + 2;
 
-                        if (i->text_position <= spin->last_mark ||
-                                pos > i->text_position)
-                            i->text_position = pos;
-                    }
-                    else if (i->text_position <= spin->last_mark)
-                        i->text_position = spin->last_mark;
+                    if (i->text_position <= spin->last_mark ||
+                            pos > i->text_position)
+                        i->text_position = pos;
+                }
+                else if (i->text_position <= spin->last_mark)
+                {
+                    i->text_position = spin->last_mark;
                 }
 
                 spin->last_mark = i->text_position;
