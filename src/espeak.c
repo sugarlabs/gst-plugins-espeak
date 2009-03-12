@@ -53,10 +53,10 @@ typedef struct
     GArray *events;
     gsize events_pos;
 
-    gsize last_word;
-    gsize mark_offset;
+    int last_word;
+    int mark_offset;
     const gchar *mark_name;
-    gsize last_mark;
+    int last_mark;
 } Espin;
 
 struct _Econtext
@@ -445,14 +445,13 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
 
         for (i = events; i->type != espeakEVENT_LIST_TERMINATED; ++i)
         {
-            // convert to 0-based position
-            --i->text_position;
-
             GST_DEBUG("type=%d text_position=%d length=%d "
                       "audio_position=%d sample=%d",
                     i->type, i->text_position, i->length,
                     i->audio_position, i->sample*2);
 
+            // convert to 0-based position
+            --i->text_position;
 
             // workaround to fix text_position related faults for mark events
             if (i->type == espeakEVENT_MARK)
@@ -464,19 +463,21 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
                             spin->last_mark, "/>");
                     if (eom)
                     {
-                        gsize pos = eom - self->text + 2;
+                        int pos = eom - self->text + 2;
 
                         if (i->text_position <= spin->last_mark ||
                                 pos > i->text_position)
                             i->text_position = pos;
                     }
+                    else if (i->text_position <= spin->last_mark)
+                        i->text_position = spin->last_mark;
                 }
 
                 spin->last_mark = i->text_position;
 
                 // point mark name to text substring instead of using
                 // espeak's allocated string
-                gsize l_quote, r_quote;
+                int l_quote, r_quote;
                 if ((r_quote = strbstr(self, i->text_position, "/>", 2)) != 0)
                     if ((r_quote = strbstr(self, r_quote, "\"", 1)) != 0)
                         if ((l_quote = strbstr(self, r_quote, "\"", 1)) != 0)
