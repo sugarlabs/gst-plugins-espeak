@@ -49,6 +49,7 @@ typedef struct
 
     GByteArray *sound;
     gsize sound_offset;
+    GstClockTime audio_position;
 
     GArray *events;
     gsize events_pos;
@@ -223,15 +224,20 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
 {
     inline gsize whole(Espin *spin, gsize size_to_play)
     {
-        gsize spin_size = spin->sound->len;
-        return MIN(size_to_play, spin_size - spin->sound_offset);
+        for (;; ++spin->events_pos)
+        {
+            espeak_EVENT *i = &g_array_index(spin->events, espeak_EVENT,
+                    spin->events_pos);
+            gsize len = i->sample*2 - spin->sound_offset;
+
+            if (i->type == espeakEVENT_LIST_TERMINATED || len >= size_to_play)
+                return len;
+        }
     }
 
     inline gsize word(Econtext *self, Espin *spin, gsize size_to_play)
     {
         gsize spin_size = spin->sound->len;
-        size_to_play = MIN(size_to_play, spin_size);
-
         gsize event;
         gsize sample_offset = 0;
 
@@ -239,9 +245,8 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
         {
             espeak_EVENT *i = &g_array_index(spin->events, espeak_EVENT, event);
 
-            GST_DEBUG("size_to_play=%zd event=%zd "
-                      "i->type=%d i->text_position=%d",
-                      size_to_play, event, i->type, i->text_position);
+            GST_DEBUG("event=%zd i->type=%d i->text_position=%d",
+                      event, i->type, i->text_position);
 
             if (i->type == espeakEVENT_LIST_TERMINATED)
             {
@@ -260,14 +265,6 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
             }
         }
 
-        if (sample_offset - spin->sound_offset > size_to_play)
-        {
-            GST_DEBUG("sample_offset=%zd spin->sound_offset=%zd",
-                    sample_offset, spin->sound_offset);
-            return size_to_play;
-        }
-
-        spin->events_pos = event + 1;
         return sample_offset - spin->sound_offset;
     }
 
@@ -281,8 +278,6 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
         }
 
         gsize spin_size = spin->sound->len;
-        size_to_play = MIN(size_to_play, spin_size);
-
         gsize event;
         gsize sample_offset = 0;
         guint mark_offset = 0;
@@ -292,9 +287,8 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
         {
             espeak_EVENT *i = &g_array_index(spin->events, espeak_EVENT, event);
 
-            GST_DEBUG("size_to_play=%zd event=%zd "
-                      "i->type=%d i->text_position=%d",
-                      size_to_play, event, i->type, i->text_position);
+            GST_DEBUG("event=%zd i->type=%d i->text_position=%d",
+                      event, i->type, i->text_position);
 
             if (i->type == espeakEVENT_LIST_TERMINATED)
             {
@@ -317,16 +311,8 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
             }
         }
 
-        if (sample_offset - spin->sound_offset > size_to_play)
-        {
-            GST_DEBUG("sample_offset=%zd spin->sound_offset=%zd",
-                    sample_offset, spin->sound_offset);
-            return size_to_play;
-        }
-
         spin->mark_offset = mark_offset;
         spin->mark_name = mark_name;
-        spin->events_pos = event + 1;
 
         return sample_offset - spin->sound_offset;
     }
@@ -345,11 +331,19 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
             size_to_play = whole(spin, size_to_play);
     }
 
+    espeak_EVENT *event = &g_array_index(spin->events, espeak_EVENT,
+            spin->events_pos);
+
     GstBuffer *out = gst_buffer_new();
     GST_BUFFER_DATA(out) = spin->sound->data + spin->sound_offset;
     GST_BUFFER_SIZE(out) = size_to_play;
+    GST_BUFFER_TIMESTAMP(out) = spin->audio_position;
+    spin->audio_position = gst_util_uint64_scale_int(
+            event->audio_position, GST_SECOND, 1000);
+    GST_BUFFER_DURATION(out) = spin->audio_position - GST_BUFFER_TIMESTAMP(out);
 
     spin->sound_offset += size_to_play;
+    spin->events_pos += 1;
 
     GST_DEBUG("out=%p size_to_play=%zd tell=%zd", GST_BUFFER_DATA(out),
             size_to_play, spin->sound_offset);
@@ -485,6 +479,7 @@ synth(Econtext *self, Espin *spin)
     g_byte_array_set_size(spin->sound, 0);
     g_array_set_size(spin->events, 0);
     spin->sound_offset = 0;
+    spin->audio_position = 0;
     spin->events_pos = 0;
     spin->mark_offset = 0;
     spin->mark_name = NULL;
