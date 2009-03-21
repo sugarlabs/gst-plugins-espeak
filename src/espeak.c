@@ -56,6 +56,7 @@ typedef struct
     int last_word;
     int mark_offset;
     const gchar *mark_name;
+    int last_mark;
 } Espin;
 
 struct _Econtext
@@ -452,10 +453,29 @@ synth_cb(short *data, int numsamples, espeak_EVENT *events)
             // convert to 0-based position
             --i->text_position;
 
+            // workaround to fix text_position related faults for mark events
             if (i->type == espeakEVENT_MARK)
             {
+                // suppress failed text_position values
+                const gchar *eom = strstr(self->text +
+                        spin->last_mark, "/>");
+                if (eom)
+                {
+                    int pos = eom - self->text + 2;
+
+                    if (i->text_position <= spin->last_mark ||
+                            pos > i->text_position)
+                        i->text_position = pos;
+                }
+                else if (i->text_position <= spin->last_mark)
+                {
+                    i->text_position = spin->last_mark;
+                }
+
+                spin->last_mark = i->text_position;
+
                 // point mark name to text substring instead of using
-                // espeak's allocated(temporally) string
+                // espeak's allocated string
                 int l_quote, r_quote;
                 if ((r_quote = strbstr(self, i->text_position, "/>", 2)) != 0)
                     if ((r_quote = strbstr(self, r_quote, "\"", 1)) != 0)
@@ -489,6 +509,7 @@ synth(Econtext *self, Espin *spin)
     spin->mark_offset = 0;
     spin->mark_name = NULL;
     spin->last_word = -1;
+    spin->last_mark = 0;
 
     espeak_SetParameter(espeakPITCH, g_atomic_int_get(&self->pitch), 0);
     espeak_SetParameter(espeakRATE, g_atomic_int_get(&self->rate), 0);
