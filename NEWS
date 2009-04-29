@@ -1,3 +1,18 @@
+0.3.3
+
+* Support utf-8 source strings #816
+
+0.3.1
+
+* Build against gstreamer-0.10.12
+* Setup GST_BUFFER_TIMESTAMP to generate sound properly in gstreamer-0.10.22
+
+0.3
+
+* Remove gio dependency
+* Support gstreamer-0.10.14
+* A bit more workaround code to catch misplaced marks
+
 0.2
 
 * Add mark events
