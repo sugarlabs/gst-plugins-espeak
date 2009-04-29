@@ -292,6 +292,7 @@ gst_espeak_create(GstBaseSrc * self_, guint64 offset, guint size,
 static gboolean
 gst_espeak_start(GstBaseSrc * self_)
 {
+    GST_DEBUG("gst_espeak_start");
     GstEspeak *self = GST_ESPEAK(self_);
     espeak_in(self->speak, self->text);
     return TRUE;
@@ -300,6 +301,7 @@ gst_espeak_start(GstBaseSrc * self_)
 static gboolean
 gst_espeak_stop(GstBaseSrc * self_)
 {
+    GST_DEBUG("gst_espeak_stop");
     GstEspeak *self = GST_ESPEAK(self_);
     espeak_reset(self->speak);
     return TRUE;
