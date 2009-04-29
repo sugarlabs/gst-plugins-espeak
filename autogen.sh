@@ -52,7 +52,7 @@ if test -z "$*"; then
   echo "  command line."
 fi
 
-tool_run "$aclocal" "-I m4/ $ACLOCAL_FLAGS"
+tool_run "$aclocal" "-I m4/ $ACLOCAL_FLAGS --install"
 tool_run "$libtoolize" "--copy --force"
 tool_run "$autoheader"
 tool_run "$autoconf"
