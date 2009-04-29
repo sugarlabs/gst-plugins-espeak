@@ -345,8 +345,9 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
     spin->sound_offset += size_to_play;
     spin->events_pos += 1;
 
-    GST_DEBUG("out=%p size_to_play=%zd tell=%zd", GST_BUFFER_DATA(out),
-            size_to_play, spin->sound_offset);
+    GST_DEBUG("out=%p size_to_play=%zd tell=%zd ts=%zd dur=%zd",
+            GST_BUFFER_DATA(out), size_to_play, spin->sound_offset,
+            GST_BUFFER_TIMESTAMP(out), GST_BUFFER_DURATION(out));
 
     return out;
 }
@@ -380,8 +381,10 @@ espeak_out(Econtext *self, gsize size_to_play)
         Espin *spin = self->out;
         gsize spin_size = spin->sound->len;
 
-        GST_DEBUG("[%p] spin->sound_offset=%zd spin_size=%zd",
-                self, spin->sound_offset, spin_size);
+        GST_DEBUG("[%p] spin=%p spin->sound_offset=%zd spin_size=%zd " \
+                "spin->state=%d",
+                self, spin, spin->sound_offset, spin_size,
+                g_atomic_int_get(&spin->state));
 
         if (g_atomic_int_get(&spin->state) == PLAY &&
                 spin->sound_offset >= spin_size)
@@ -503,8 +506,10 @@ synth(Econtext *self, Espin *spin)
 
     if (spin->events->len)
     {
-        self->text_offset = g_array_index(spin->events,
-                espeak_EVENT, spin->events->len-1).text_position + 1;
+        int text_offset = g_array_index(spin->events, espeak_EVENT,
+                spin->events->len-1).text_position + 1;
+        self->text_offset = g_utf8_offset_to_pointer(self->text, text_offset)
+                - self->text;
     }
 
     espeak_EVENT last_event = { espeakEVENT_LIST_TERMINATED };
@@ -592,6 +597,9 @@ process(gpointer data)
                 GST_DEBUG("[%p] session is closed", context);
                 continue;
             }
+
+            GST_DEBUG("[%p] context->text_offset=%d context->text_len=%d",
+                    context, context->text_offset, context->text_len);
 
             if (context->text_offset >= context->text_len)
             {
