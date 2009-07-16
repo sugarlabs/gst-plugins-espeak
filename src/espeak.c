@@ -352,7 +352,7 @@ play(Econtext *self, Espin *spin, gsize size_to_play)
 
     spin->sound_offset += size_to_play;
 
-    GST_DEBUG("out=%p size_to_play=%zd tell=%zd ts=%zd dur=%zd",
+    GST_DEBUG("out=%p size_to_play=%zd tell=%zd ts=%lld dur=%lld",
             GST_BUFFER_DATA(out), size_to_play, spin->sound_offset,
             GST_BUFFER_TIMESTAMP(out), GST_BUFFER_DURATION(out));
 
