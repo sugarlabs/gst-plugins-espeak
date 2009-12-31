@@ -17,7 +17,7 @@ AS_VERSION(gst-plugin, GST_PLUGIN_VERSION, 0, 10, 0, 1,
 dnl AM_MAINTAINER_MODE provides the option to enable maintainer mode
 #AM_MAINTAINER_MODE
 
-AM_INIT_AUTOMAKE($PACKAGE, $VERSION)
+AM_INIT_AUTOMAKE([dist-bzip2 no-dist-gzip])
 
 dnl make aclocal work in maintainer mode
 AC_SUBST(ACLOCAL_AMFLAGS, "-I m4")

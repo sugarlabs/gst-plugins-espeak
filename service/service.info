@@ -1,0 +1,27 @@
+[Service]
+name = gst-plugins-espeak
+summary = eSpeak library as a sound source for GStreamer
+description = %(summary)s
+homepage = http://wiki.sugarlabs.org/go/Activity_Team/gst-plugins-espeak
+compatibility-version = 0
+version = 3
+license = GPLv2+
+build-command = "$SRCDIR"/configure --prefix="$DISTDIR" && make install
+binding = GST_PLUGIN_PATH lib/gstreamer-0.10
+requires = espeak; gstreamer; gst-plugins-base; gst-plugins-good
+build-requires = %(requires)s; make; gcc-c
+
+[Distro:*]
+name = gst-plugins-espeak
+
+[Distro:gentoo]
+name = media-sound/gst-plugins-espeak
+
+[Distro:mandriva]
+name = gstreamer0.10-espeak
+
+[Distro:suse]
+name = gstreamer-0_10-plugins-espeak
+
+[Distro:debian]
+name = gstreamer0.10-plugins-espeak

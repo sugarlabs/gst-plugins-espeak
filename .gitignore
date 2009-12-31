@@ -19,5 +19,7 @@ missing
 .deps
 .libs
 *.lo
-
-gst-plugin-*.tar.*
+dist
+build
+m4
+gst-plugins-*.tar.*
