@@ -124,17 +124,23 @@ fi
 AC_SUBST(plugindir)
 
 dnl set proper LDFLAGS for plugins
-GST_PLUGIN_LDFLAGS='-module -avoid-version -export-symbols-regex [_]*\(gst_\|Gst\|GST_\).*'
+GST_PLUGIN_LDFLAGS='-module -avoid-version'
 AC_SUBST(GST_PLUGIN_LDFLAGS)
 
-dnl check espeak dependencies
-AC_CHECK_LIB(espeak, espeak_Initialize,, AC_MSG_ERROR())
 PKG_CHECK_MODULES(GST_AUDIO, gstreamer-audio-0.10, HAVE_AUDIO=yes, HAVE_AUDIO=no)
-
 if test "x$HAVE_AUDIO" = "xno"; then
     AC_CHECK_LIB(gstbase-0.10, gst_base_src_get_type,, AC_MSG_ERROR())
     AC_CHECK_LIB(gstaudio-0.10, gst_base_audio_src_get_type,, AC_MSG_ERROR())
 fi
 
-AC_OUTPUT(Makefile m4/Makefile src/Makefile)
+dnl check espeak
+if test "${ESPEAK_PREFIX}"; then
+    ESPEAK_CFLAGS="-I${ESPEAK_PREFIX}/include"
+    ESPEAK_LIBS="-L${ESPEAK_PREFIX}/lib -lespeak"
+    AC_SUBST(ESPEAK_CFLAGS)
+    AC_SUBST(ESPEAK_LIBS)
+else
+    AC_CHECK_LIB(espeak, espeak_Initialize,, AC_MSG_ERROR())
+fi
 
+AC_OUTPUT(Makefile m4/Makefile src/Makefile)

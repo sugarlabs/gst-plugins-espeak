@@ -1,27 +1,31 @@
-[Service]
-name = gst-plugins-espeak
+[DEFAULT]
+uid = gst-plugins-espeak
 summary = eSpeak library as a sound source for GStreamer
-description = %(summary)s
-homepage = http://wiki.sugarlabs.org/go/Activity_Team/gst-plugins-espeak
-compatibility-version = 0
-version = 3
 license = GPLv2+
-build-command = "$SRCDIR"/configure --prefix="$DISTDIR" && make install
-binding = GST_PLUGIN_PATH lib/gstreamer-0.10
-requires = espeak; gstreamer; gst-plugins-base; gst-plugins-good
-build-requires = %(requires)s; make; gcc-c
+homepage = http://wiki.sugarlabs.org/go/Activity_Team/gst-plugins-espeak
 
-[Distro:*]
-name = gst-plugins-espeak
+[Service]
+requires = espeak >= 1.42, gstreamer, gst-plugins-base, gst-plugins-good
+packaged = rpm gst-plugins-espeak
+           suse gstreamer-0_10-plugins-espeak
+           debian gstreamer0.10-plugins-espeak
+           mandriva gstreamer0.10-espeak
+           gentoo media-sound/gst-plugins-espeak
+binding  = GST_PLUGIN_PATH lib
+include  = *.so*
+machine  = build
 
-[Distro:gentoo]
-name = media-sound/gst-plugins-espeak
+[Build]
+requires = espeak/devel, gstreamer/devel, gst-plugins-base/devel
+           gst-plugins-good/devel, make, gcc-c
+exec     = "$SRCDIR"/configure
+                CFLAGS="%(cflags)s"
+                --prefix="$DISTDIR"
+                %(chost)s
+           && make
+           && make install-strip
 
-[Distro:mandriva]
-name = gstreamer0.10-espeak
-
-[Distro:suse]
-name = gstreamer-0_10-plugins-espeak
-
-[Distro:debian]
-name = gstreamer0.10-plugins-espeak
+[Maintain]
+version = 1
+exec = ./autogen.sh && make distcheck
+export-versions = gstreamer >= %(version)s
