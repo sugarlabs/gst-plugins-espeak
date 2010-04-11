@@ -19,5 +19,6 @@ missing
 .deps
 .libs
 *.lo
-
+m4
 gst-plugin-*.tar.*
+.0sugar

@@ -1,4 +1,14 @@
-WHAT IT IS
-----------
-
+About
+~~~~~
 gstespeak is a src plugin to use espeak by way of sound source.
+
+
+Home Page
+~~~~~~~~~
+http://wiki.sugarlabs.org/go/Activity_Team/gst-plugins-espeak
+
+
+Get it
+~~~~~~
+http://git.sugarlabs.org/projects/gst-plugins-espeak
+http://download.sugarlabs.org/sources/honey/gst-plugins-espeak/
