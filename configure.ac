@@ -1,4 +1,4 @@
-AC_INIT([gst-plugins-espeak], [0.3.3])
+AC_INIT([gst-plugins-espeak], [0.3.4])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([configure.ac])
 AM_INIT_AUTOMAKE([foreign dist-bzip2 no-dist-gzip])
@@ -12,8 +12,12 @@ AC_PROG_LIBTOOL
 
 GST_MAJORMINOR=0.10
 
-PKG_CHECK_MODULES(GST, gstreamer-$GST_MAJORMINOR >= 0.10.16)
-PKG_CHECK_MODULES(GST_AUDIO, gstreamer-audio-$GST_MAJORMINOR)
+PKG_CHECK_MODULES(GST, gstreamer-$GST_MAJORMINOR)
+PKG_CHECK_MODULES(GST_AUDIO, gstreamer-audio-$GST_MAJORMINOR, have_audio=yes, have_audio=no)
+if test "x$have_audio" = "xno"; then
+    AC_CHECK_LIB(gstbase-$GST_MAJORMINOR, gst_base_src_get_type,, AC_MSG_ERROR())
+    AC_CHECK_LIB(gstaudio-$GST_MAJORMINOR, gst_base_audio_src_get_type,, AC_MSG_ERROR())
+fi
 
 dnl Check for 0sugar support
 if test "${ESPEAK_PREFIX}"; then

@@ -1,25 +1,30 @@
-0.3.3
+v0.3.4 2010-04-11
+~~~~~~~~~~~~~~~~~
+* Add '-no-undefined' LDFLAGS (Yaakov Selkowitz)
+* Export the only symbol that plugins must export (Yaakov Selkowitz)
 
+0.3.3
+~~~~~
 * Support utf-8 source strings #816
 
 0.3.1
-
+~~~~~
 * Build against gstreamer-0.10.12
 * Setup GST_BUFFER_TIMESTAMP to generate sound properly in gstreamer-0.10.22
 
 0.3
-
+~~~
 * Remove gio dependency
 * Support gstreamer-0.10.14
 * A bit more workaround code to catch misplaced marks
 
 0.2
-
+~~~
 * Add mark events
 * Use speech-dispatcher's format for properties
 * Add word notification events
 * Setup CAPS and do not use WAV header
 
 0.1
-
+~~~
 * Initial implementation
