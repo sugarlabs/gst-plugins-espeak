@@ -27,19 +27,19 @@
 struct _Econtext;
 typedef struct _Econtext Econtext;
 
-Econtext*       espeak_new(GstElement*);
-void            espeak_unref(Econtext*);
+Econtext *espeak_new (GstElement *);
+void espeak_unref (Econtext *);
 
-gint            espeak_get_sample_rate();
-GValueArray*    espeak_get_voices();
-void            espeak_set_pitch(Econtext*, gint);
-void            espeak_set_rate(Econtext*, gint);
-void            espeak_set_voice(Econtext*, const gchar*);
-void            espeak_set_gap(Econtext*, guint);
-void            espeak_set_track(Econtext*, guint);
+gint espeak_get_sample_rate ();
+GValueArray *espeak_get_voices ();
+void espeak_set_pitch (Econtext *, gint);
+void espeak_set_rate (Econtext *, gint);
+void espeak_set_voice (Econtext *, const gchar *);
+void espeak_set_gap (Econtext *, guint);
+void espeak_set_track (Econtext *, guint);
 
-void            espeak_in(Econtext*, const gchar *str);
-GstBuffer*      espeak_out(Econtext*, gsize size_to_play);
-void            espeak_reset(Econtext*);
+void espeak_in (Econtext *, const gchar * str);
+GstBuffer *espeak_out (Econtext *, gsize size_to_play);
+void espeak_reset (Econtext *);
 
 #endif

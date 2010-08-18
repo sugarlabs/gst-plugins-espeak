@@ -22,7 +22,6 @@
 #include <gst/audio/gstaudiosrc.h>
 
 G_BEGIN_DECLS
-
 /* #defines don't like whitespacey bits */
 #define GST_TYPE_ESPEAK \
   (gst_espeak_get_type())
@@ -34,13 +33,11 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_ESPEAK))
 #define GST_IS_ESPEAK_CLASS(klass) \
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_ESPEAK))
-
-typedef struct _GstEspeak      GstEspeak;
+typedef struct _GstEspeak GstEspeak;
 typedef struct _GstEspeakClass GstEspeakClass;
 struct _Econtext;
 
-struct _GstEspeak
-{
+struct _GstEspeak {
     GstAudioSrc parent;
     struct _Econtext *speak;
     gchar *text;
@@ -54,13 +51,11 @@ struct _GstEspeak
     gboolean poll;
 };
 
-struct _GstEspeakClass 
-{
+struct _GstEspeakClass {
     GstAudioSrcClass parent_class;
 };
 
 GType gst_espeak_get_type (void);
 
 G_END_DECLS
-
 #endif /* __GST_ESPEAK_H__ */

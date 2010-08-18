@@ -1,0 +1,15 @@
+Before committing
+~~~~~~~~~~~~~~~~~
+All source files need to be passed through indent command.
+Follow http://wiki.sugarlabs.org/go/Activity_Team/Sugar_Lint instructions
+and especially "Lint files before committing" section.
+Otherwise just call indent command with settings [1].
+
+
+Send patches
+~~~~~~~~~~~~
+Create your patches using "git format" command and send them to all maintainers
+from AUTHORS file. The easiest way it just using "git send-email" command.
+
+
+[1] http://git.sugarlabs.org/projects/sugar-lint/repos/mainline/blobs/master/sugar/lint/indent.pro
