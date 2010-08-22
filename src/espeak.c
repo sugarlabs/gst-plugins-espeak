@@ -265,6 +265,7 @@ GstBuffer *play (Econtext * self, Espin * spin, gsize size_to_play) {
             spin->events_pos);
 
     GstBuffer *out = gst_buffer_new ();
+    GST_BUFFER_OFFSET (out) = spin->sound_offset;
     GST_BUFFER_DATA (out) = spin->sound->data + spin->sound_offset;
     GST_BUFFER_SIZE (out) = size_to_play;
     GST_BUFFER_TIMESTAMP (out) = spin->audio_position;
