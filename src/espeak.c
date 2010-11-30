@@ -62,6 +62,7 @@ struct _Econtext {
     gchar *text;
     gsize text_offset;
     gsize text_len;
+    gchar *next_mark;
 
     Espin queue[SPIN_QUEUE_SIZE];
     Espin *in;
@@ -108,14 +109,6 @@ static void emit_mark (Econtext * self, guint offset, const gchar * mark) {
     post_message (self, gst_structure_new ("espeak-mark",
                     "offset", G_TYPE_UINT, offset,
                     "mark", G_TYPE_STRING, mark, NULL));
-}
-
-static inline gsize
-strbstr (Econtext * self, gsize pos, const gchar * needle, gsize needle_len) {
-    for (pos -= needle_len; pos >= needle_len; --pos)
-        if (strncmp (self->text + pos, needle, needle_len) == 0)
-            return pos;
-    return 0;
 }
 
 static void init ();
@@ -344,6 +337,8 @@ void espeak_reset (Econtext * self) {
         g_free (self->text);
         self->text = NULL;
     }
+
+    self->next_mark = NULL;
 }
 
 // espeak ----------------------------------------------------------------------
@@ -371,16 +366,15 @@ static gint synth_cb (short *data, int numsamples, espeak_EVENT * events) {
             --i->text_position;
 
             if (i->type == espeakEVENT_MARK) {
-                // point mark name to text substring instead of using
-                // espeak's allocated(temporally) string
-                int l_quote, r_quote;
-                if ((r_quote = strbstr (self, i->text_position, "/>", 2)) != 0)
-                    if ((r_quote = strbstr (self, r_quote, "\"", 1)) != 0)
-                        if ((l_quote = strbstr (self, r_quote, "\"", 1)) != 0) {
-                            i->id.name = self->text + l_quote + 1;
-                            self->text[r_quote] = 0;
-                        }
-
+                // point mark name to our text substring instead of
+                // one which was temporally allocated by espeak
+                if (self->next_mark == NULL)
+                    self->next_mark = self->text;
+                int mark_len = strlen (i->id.name);
+                strncpy (self->next_mark, i->id.name, mark_len);
+                i->id.name = self->next_mark;
+                self->next_mark[mark_len] = '\0';
+                self->next_mark += mark_len + 1;
             }
 
             GST_DEBUG ("text_position=%d length=%d",
