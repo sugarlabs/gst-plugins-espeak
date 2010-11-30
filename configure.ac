@@ -1,7 +1,7 @@
-AC_INIT([gst-plugins-espeak], [0.3.4])
+AC_INIT([gst-plugins-espeak], [0.3.5])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([configure.ac])
-AM_INIT_AUTOMAKE([foreign dist-bzip2 no-dist-gzip])
+AM_INIT_AUTOMAKE([foreign])
 AM_CONFIG_HEADER(config.h)
 
 AM_MAINTAINER_MODE

@@ -1,3 +1,12 @@
+v0.3.5 2010-11-30
+~~~~~~~~~~~~~~~~~
+* Do not seeak for marks in original text, just store them at the begining
+  of original text.
+* Set GST_BUFFER_OFFSET to fix critical message (Guillaume Dorchies)
+* audio output skips about every second word in track=1 (word) mode #2165
+  (Tal Shalif)
+* Pass source files via indent, add HACKING file.
+
 v0.3.4 2010-04-11
 ~~~~~~~~~~~~~~~~~
 * Add '-no-undefined' LDFLAGS (Yaakov Selkowitz)
