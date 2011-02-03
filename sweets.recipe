@@ -1,0 +1,27 @@
+[DEFAULT]
+depends   = espeak; gstreamer; gst-plugins-base
+
+[Library]
+sweet     = gst-plugins-espeak
+summary   = eSpeak library as a sound source for GStreamer
+license   = GPLv2+
+homepage  = http://wiki.sugarlabs.org/go/Activity_Team/gst-plugins-espeak
+
+version   = 0.3.5
+stability = testing
+
+requires  = %(depends)s
+binding   = GST_PLUGIN_PATH lib
+
+[Archive]
+arch      = any
+
+[Build]
+requires  = %(depends)s; make; gcc-c
+clean     = make distclean; ./autogen.sh --version
+configure = ./configure --prefix=%(PREFIX)s CFLAGS="%(CFLAGS)s"
+make      = make
+install   = make DESTDIR=%(DESTDIR)s install
+
+[Source]
+exec      = ./autogen.sh && make distcheck
