@@ -595,7 +595,7 @@ static void init () {
 
             GValue voice_value = { 0 };
             g_value_init (&voice_value, G_TYPE_VALUE_ARRAY);
-            g_value_set_boxed_take_ownership (&voice_value, voice);
+            g_value_take_boxed (&voice_value, voice);
             g_value_array_append (espeak_voices, &voice_value);
             g_value_unset (&voice_value);
         }
