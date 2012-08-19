@@ -152,7 +152,7 @@ static void gst_espeak_init (GstEspeak * self) {
             "rate", G_TYPE_INT, espeak_get_sample_rate (),
             "channels", G_TYPE_INT, 1, NULL);
 
-    gst_base_src_set_format (GST_BASE_SRC (self), GST_FORMAT_DEFAULT);
+    gst_base_src_set_format (GST_BASE_SRC (self), GST_FORMAT_TIME);
 }
 
 static void gst_espeak_finalize (GObject * self_) {
