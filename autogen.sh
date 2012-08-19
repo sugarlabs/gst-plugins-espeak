@@ -6,4 +6,4 @@ autoheader || exit 1
 autoconf || exit 1
 automake -a -c || exit 1
 
-[ "$NOCONFIGURE" ] || ./configure CFLAGS="$CFLAGS -Wall" --enable-maintainer-mode
+[ "$NOCONFIGURE" ] || ./configure CFLAGS="$CFLAGS -Wall" --enable-maintainer-mode "$@"

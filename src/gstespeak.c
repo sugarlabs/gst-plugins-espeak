@@ -63,38 +63,24 @@ static GstFlowReturn gst_espeak_create (GstBaseSrc *,
 static gboolean gst_espeak_start (GstBaseSrc *);
 static gboolean gst_espeak_stop (GstBaseSrc *);
 static gboolean gst_espeak_is_seekable (GstBaseSrc *);
-static void gst_espeak_init_uri (GType);
+static void gst_espeak_uri_handler_init (gpointer g_iface, gpointer iface_data);
 static void gst_espeak_finalize (GObject *);
 static void gst_espeak_set_property (GObject *, guint, const GValue *,
         GParamSpec *);
 static void gst_espeak_get_property (GObject *, guint, GValue *, GParamSpec *);
-static GstCaps *gst_espeak_getcaps (GstBaseSrc *);
+static GstCaps *gst_espeak_getcaps (GstBaseSrc *, GstCaps *);
 
-GST_BOILERPLATE_FULL (GstEspeak, gst_espeak, GstBaseSrc, GST_TYPE_BASE_SRC,
-        gst_espeak_init_uri);
+G_DEFINE_TYPE_WITH_CODE (GstEspeak, gst_espeak, GST_TYPE_BASE_SRC,
+        G_IMPLEMENT_INTERFACE (GST_TYPE_URI_HANDLER,
+                gst_espeak_uri_handler_init));
 
 /******************************************************************************/
-
-static void gst_espeak_base_init (gpointer gclass) {
-    GstElementClass *element_class = GST_ELEMENT_CLASS (gclass);
-
-    static GstElementDetails details = {
-        "Espeak",
-        "Source",
-        "Uses eSpeak library as a sound source for GStreamer",
-        "Aleksey S. Lim <alsroot@member.fsf.org>"
-    };
-
-    gst_element_class_set_details (element_class, &details);
-
-    gst_element_class_add_pad_template (element_class,
-            gst_static_pad_template_get (&src_factory));
-}
 
 /* initialize the espeak's class */
 static void gst_espeak_class_init (GstEspeakClass * klass) {
     GObjectClass *gobject_class = (GObjectClass *) klass;
     GstBaseSrcClass *basesrc_class = (GstBaseSrcClass *) klass;
+    GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
 
     basesrc_class->create = gst_espeak_create;
     basesrc_class->start = gst_espeak_start;
@@ -138,6 +124,10 @@ static void gst_espeak_class_init (GstEspeakClass * klass) {
             g_param_spec_boxed ("caps", "Caps",
                     "Caps describing the format of the data", GST_TYPE_CAPS,
                     G_PARAM_READABLE));
+
+    gst_element_class_add_pad_template (element_class,
+            gst_static_pad_template_get (&src_factory));
+
 }
 
 /* initialize the new element
@@ -145,7 +135,7 @@ static void gst_espeak_class_init (GstEspeakClass * klass) {
  * set pad calback functions
  * initialize instance structure
  */
-static void gst_espeak_init (GstEspeak * self, GstEspeakClass * gclass) {
+static void gst_espeak_init (GstEspeak * self) {
     self->text = NULL;
     self->pitch = 0;
     self->rate = 0;
@@ -153,12 +143,14 @@ static void gst_espeak_init (GstEspeak * self, GstEspeakClass * gclass) {
     self->voices = espeak_get_voices ();
     self->speak = espeak_new (GST_ELEMENT (self));
 
-    self->caps = gst_caps_new_simple ("audio/x-raw-int",
+    GstAudioFormat format;
+    format = gst_audio_format_build_integer (TRUE, G_BYTE_ORDER, 16, 16);
+
+    self->caps = gst_caps_new_simple ("audio/x-raw",
+            "format", G_TYPE_STRING, gst_audio_format_to_string (format),
+            "layout", G_TYPE_STRING, "interleaved",
             "rate", G_TYPE_INT, espeak_get_sample_rate (),
-            "channels", G_TYPE_INT, 1,
-            "endianness", G_TYPE_INT, G_BYTE_ORDER,
-            "width", G_TYPE_INT, 16,
-            "depth", G_TYPE_INT, 16, "signed", G_TYPE_BOOLEAN, TRUE, NULL);
+            "channels", G_TYPE_INT, 1, NULL);
 
     gst_base_src_set_format (GST_BASE_SRC (self), GST_FORMAT_DEFAULT);
 }
@@ -177,7 +169,7 @@ static void gst_espeak_finalize (GObject * self_) {
     g_value_array_free (self->voices);
     self->voices = NULL;
 
-    G_OBJECT_CLASS (parent_class)->dispose (self_);
+    G_OBJECT_CLASS (gst_espeak_parent_class)->dispose (self_);
 }
 
 /******************************************************************************/
@@ -262,22 +254,24 @@ gst_espeak_get_property (GObject * object, guint prop_id,
 
 static GstFlowReturn
 gst_espeak_create (GstBaseSrc * self_, guint64 offset, guint size,
-        GstBuffer ** buf) {
+        GstBuffer ** buffer) {
     GstEspeak *self = GST_ESPEAK (self_);
+    GstBuffer *buf;
 
-    *buf = espeak_out (self->speak, size);
+    buf = espeak_out (self->speak, size);
 
-    if (*buf) {
-        gst_buffer_set_caps (*buf, self->caps);
+    if (buf) {
+        *buffer = buf;
         return GST_FLOW_OK;
     } else
-        return GST_FLOW_UNEXPECTED;
+        return GST_FLOW_EOS;
 }
 
 static gboolean gst_espeak_start (GstBaseSrc * self_) {
     GST_DEBUG ("gst_espeak_start");
     GstEspeak *self = GST_ESPEAK (self_);
     espeak_in (self->speak, self->text);
+    gst_pad_set_caps (GST_BASE_SRC_PAD (self), self->caps);
     return TRUE;
 }
 
@@ -292,42 +286,53 @@ static gboolean gst_espeak_is_seekable (GstBaseSrc * src) {
     return FALSE;
 }
 
-static GstCaps *gst_espeak_getcaps (GstBaseSrc * self_) {
+static GstCaps *gst_espeak_getcaps (GstBaseSrc * self_, GstCaps * filter) {
     GstEspeak *self = GST_ESPEAK (self_);
     return gst_caps_ref (self->caps);
 }
 
 /******************************************************************************/
 
-static GstURIType gst_espeak_uri_get_type (void) {
+static GstURIType gst_espeak_uri_get_type (GType type) {
     return GST_URI_SRC;
 }
 
-static gchar **gst_espeak_uri_get_protocols (void) {
-    static gchar *protocols[] = { "espeak", NULL };
+static const gchar *const *gst_espeak_uri_get_protocols (GType type) {
+    static const gchar *protocols[] = { "espeak", NULL };
     return protocols;
 }
 
 static gboolean
-gst_espeak_uri_set_uri (GstURIHandler * handler, const gchar * uri) {
+gst_espeak_uri_set_uri (GstURIHandler * handler, const gchar * uri,
+        GError ** error) {
     gchar *protocol, *text;
     gboolean ret;
 
     protocol = gst_uri_get_protocol (uri);
     ret = strcmp (protocol, "espeak") == 0;
     g_free (protocol);
-    if (!ret)
+    if (!ret) {
+        g_set_error_literal (error, GST_URI_ERROR, GST_URI_ERROR_BAD_URI,
+                "Could not parse espeak URI");
         return FALSE;
+    }
 
     text = gst_uri_get_location (uri);
 
-    if (!text)
+    if (!text) {
+        g_set_error_literal (error, GST_URI_ERROR, GST_URI_ERROR_BAD_URI,
+                "Not text to produce");
         return FALSE;
+    }
 
     gst_espeak_set_text (GST_ESPEAK (handler), text);
     g_free (text);
 
     return TRUE;
+}
+
+static gchar *gst_espeak_uri_get_uri (GstURIHandler * handler) {
+    return g_strdup_printf ("espeak://%s", GST_ESPEAK (handler)->text);
 }
 
 static void gst_espeak_uri_handler_init (gpointer g_iface, gpointer iface_data) {
@@ -336,16 +341,7 @@ static void gst_espeak_uri_handler_init (gpointer g_iface, gpointer iface_data) 
     iface->get_type = gst_espeak_uri_get_type;
     iface->get_protocols = gst_espeak_uri_get_protocols;
     iface->set_uri = gst_espeak_uri_set_uri;
-}
-
-static void gst_espeak_init_uri (GType filesrc_type) {
-    static const GInterfaceInfo urihandler_info = {
-        gst_espeak_uri_handler_init,
-        NULL,
-        NULL
-    };
-    g_type_add_interface_static (filesrc_type, GST_TYPE_URI_HANDLER,
-            &urihandler_info);
+    iface->get_uri = gst_espeak_uri_get_uri;
 }
 
 /******************************************************************************/
@@ -367,7 +363,7 @@ static gboolean espeak_init (GstPlugin * espeak) {
 
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
         GST_VERSION_MINOR,
-        "espeak",
+        espeak,
         "Uses eSpeak library as a sound source for GStreamer",
         espeak_init,
         PACKAGE_VERSION,

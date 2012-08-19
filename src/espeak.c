@@ -257,10 +257,12 @@ GstBuffer *play (Econtext * self, Espin * spin, gsize size_to_play) {
     espeak_EVENT *event = &g_array_index (spin->events, espeak_EVENT,
             spin->events_pos);
 
-    GstBuffer *out = gst_buffer_new ();
+    GstBuffer *out = gst_buffer_new_wrapped_full (GST_MEMORY_FLAG_READONLY |
+            GST_MEMORY_FLAG_NO_SHARE,
+            spin->sound->data, spin->sound->len,
+            spin->sound_offset, size_to_play, NULL, NULL);
+
     GST_BUFFER_OFFSET (out) = spin->sound_offset;
-    GST_BUFFER_DATA (out) = spin->sound->data + spin->sound_offset;
-    GST_BUFFER_SIZE (out) = size_to_play;
     GST_BUFFER_TIMESTAMP (out) = spin->audio_position;
     spin->audio_position =
             gst_util_uint64_scale_int (event->audio_position, GST_SECOND, 1000);
@@ -270,8 +272,8 @@ GstBuffer *play (Econtext * self, Espin * spin, gsize size_to_play) {
     spin->sound_offset += size_to_play;
     spin->events_pos += 1;
 
-    GST_DEBUG ("out=%p size_to_play=%zd tell=%zd ts=%" G_GUINT64_FORMAT " dur=%"
-            G_GUINT64_FORMAT, GST_BUFFER_DATA (out), size_to_play,
+    GST_DEBUG ("size_to_play=%zd tell=%zd ts=%" G_GUINT64_FORMAT " dur=%"
+            G_GUINT64_FORMAT, size_to_play,
             spin->sound_offset, GST_BUFFER_TIMESTAMP (out),
             GST_BUFFER_DURATION (out));
 
