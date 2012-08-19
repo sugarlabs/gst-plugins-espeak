@@ -153,6 +153,7 @@ static void gst_espeak_init (GstEspeak * self) {
             "channels", G_TYPE_INT, 1, NULL);
 
     gst_base_src_set_format (GST_BASE_SRC (self), GST_FORMAT_TIME);
+    gst_base_src_set_blocksize (GST_BASE_SRC (self), espeak_get_buffer_size());
 }
 
 static void gst_espeak_finalize (GObject * self_) {

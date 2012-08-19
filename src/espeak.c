@@ -21,7 +21,8 @@
 #include <gst/gst.h>
 #include <espeak/speak_lib.h>
 
-#define SYNC_BUFFER_SIZE 4096
+#define SYNC_BUFFER_SIZE_MS 200
+#define BYTES_PER_SAMPLE 2
 
 #define SPIN_QUEUE_SIZE 2
 #define SPIN_FRAME_SIZE 255
@@ -121,6 +122,7 @@ static GCond *process_cond = NULL;
 static GSList *process_queue = NULL;
 
 static gint espeak_sample_rate = 0;
+static gint espeak_buffer_size = 0;
 static GValueArray *espeak_voices = NULL;
 
 // -----------------------------------------------------------------------------
@@ -202,7 +204,7 @@ GstBuffer *play (Econtext * self, Espin * spin, gsize size_to_play) {
         for (;; ++spin->events_pos) {
             espeak_EVENT *i = &g_array_index (spin->events, espeak_EVENT,
                     spin->events_pos);
-            gsize len = i->sample * 2 - spin->sound_offset;
+            gsize len = i->sample * BYTES_PER_SAMPLE - spin->sound_offset;
 
             if (i->type == espeakEVENT_LIST_TERMINATED || len >= size_to_play)
                 return len;
@@ -236,7 +238,7 @@ GstBuffer *play (Econtext * self, Espin * spin, gsize size_to_play) {
         }
 
         if (!sample_offset) {
-            sample_offset = i->sample * 2;
+            sample_offset = i->sample * BYTES_PER_SAMPLE;
         }
 
         return sample_offset - spin->sound_offset;
@@ -329,7 +331,7 @@ void espeak_reset (Econtext * self) {
     process_pop (self);
 
     GstBuffer *buf;
-    while ((buf = espeak_out (self, SYNC_BUFFER_SIZE)) != NULL)
+    while ((buf = espeak_out (self, espeak_buffer_size)) != NULL)
         gst_buffer_unref (buf);
 
     int i;
@@ -355,7 +357,7 @@ static gint synth_cb (short *data, int numsamples, espeak_EVENT * events) {
 
     if (numsamples > 0) {
         g_byte_array_append (spin->sound, (const guint8 *) data,
-                numsamples * 2);
+                numsamples * BYTES_PER_SAMPLE);
 
         espeak_EVENT *i;
 
@@ -363,7 +365,7 @@ static gint synth_cb (short *data, int numsamples, espeak_EVENT * events) {
             GST_DEBUG ("type=%d text_position=%d length=%d "
                     "audio_position=%d sample=%d",
                     i->type, i->text_position, i->length,
-                    i->audio_position, i->sample * 2);
+                    i->audio_position, i->sample * BYTES_PER_SAMPLE);
 
             // convert to 0-based position
             --i->text_position;
@@ -387,7 +389,7 @@ static gint synth_cb (short *data, int numsamples, espeak_EVENT * events) {
         }
     }
 
-    GST_DEBUG ("numsamples=%d", numsamples * 2);
+    GST_DEBUG ("numsamples=%d", numsamples * BYTES_PER_SAMPLE);
 
     return 0;
 }
@@ -426,12 +428,16 @@ static void synth (Econtext * self, Espin * spin) {
     }
 
     espeak_EVENT last_event = { espeakEVENT_LIST_TERMINATED };
-    last_event.sample = spin->sound->len / 2;
+    last_event.sample = spin->sound->len / BYTES_PER_SAMPLE;
     g_array_append_val (spin->events, last_event);
 }
 
 gint espeak_get_sample_rate () {
     return espeak_sample_rate;
+}
+
+gint espeak_get_buffer_size () {
+    return espeak_buffer_size;
 }
 
 GValueArray *espeak_get_voices () {
@@ -562,7 +568,10 @@ static void init () {
         process_tid = g_thread_create (process, NULL, FALSE, NULL);
 
         espeak_sample_rate = espeak_Initialize (AUDIO_OUTPUT_SYNCHRONOUS,
-                SYNC_BUFFER_SIZE, NULL, 0);
+                SYNC_BUFFER_SIZE_MS, NULL, 0);
+        espeak_buffer_size =
+                (SYNC_BUFFER_SIZE_MS * espeak_sample_rate) /
+                1000 / BYTES_PER_SAMPLE;
         espeak_SetSynthCallback (synth_cb);
 
         gsize count = 0;

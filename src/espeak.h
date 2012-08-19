@@ -31,6 +31,7 @@ Econtext *espeak_new (GstElement *);
 void espeak_unref (Econtext *);
 
 gint espeak_get_sample_rate ();
+gint espeak_get_buffer_size ();
 GValueArray *espeak_get_voices ();
 void espeak_set_pitch (Econtext *, gint);
 void espeak_set_rate (Econtext *, gint);
