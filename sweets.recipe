@@ -1,14 +1,16 @@
 [DEFAULT]
 depends   = espeak; gstreamer; gst-plugins-base
 
-[Library]
-sweet     = gst-plugins-espeak
+[Package]
+project   = SweetsDistribution
+implement = %(name)s
+name      = gst-plugins-espeak
 summary   = eSpeak library as a sound source for GStreamer
 license   = GPLv2+
 homepage  = http://wiki.sugarlabs.org/go/Activity_Team/gst-plugins-espeak
 
 version   = 0.3.5
-stability = testing
+stability = stable
 
 requires  = %(depends)s
 binding   = GST_PLUGIN_PATH lib
