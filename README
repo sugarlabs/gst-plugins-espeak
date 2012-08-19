@@ -1,19 +1,15 @@
-About
-~~~~~
+Introduction
+============
+
 gstespeak is a src plugin to use espeak by way of sound source.
+See `home page`_ for more details.
 
+Sources
+=======
 
-Home Page
-~~~~~~~~~
-http://wiki.sugarlabs.org/go/Activity_Team/gst-plugins-espeak
+Clone source repository from `Gitorious`_ project:
 
+    ``git clone git://git.sugarlabs.org/gst-plugins-espeak/mainline.git``
 
-Contribution
-~~~~~~~~~~~~
-See HACKING file.
-
-
-Get it
-~~~~~~
-http://git.sugarlabs.org/projects/gst-plugins-espeak
-http://download.sugarlabs.org/sources/honey/gst-plugins-espeak/
+.. _home page: http://wiki.sugarlabs.org/go/Activity_Team/gst-plugins-espeak
+.. _Gitorious: http://git.sugarlabs.org/gst-plugins-espeak
