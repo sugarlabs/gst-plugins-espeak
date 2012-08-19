@@ -24,52 +24,21 @@
 #define SYNC_BUFFER_SIZE_MS 200
 #define BYTES_PER_SAMPLE 2
 
-#define SPIN_QUEUE_SIZE 2
 #define SPIN_FRAME_SIZE 255
 
 #include "espeak.h"
 
-typedef enum {
-    IN = 1,
-    OUT = 2,
-    PLAY = 4
-} SpinState;
+struct _Econtext {
+    gchar *text;
+    gchar *next_mark;
 
-typedef enum {
-    INPROCESS = 1,
-    CLOSE = 2
-} ContextState;
-
-typedef struct {
-    Econtext *context;
-
-    volatile SpinState state;
-
-    GByteArray *sound;
+    GList *first_buffer;
+    GList *last_buffer;
     gsize sound_offset;
     GstClockTime audio_position;
 
     GArray *events;
     gsize events_pos;
-
-    int last_word;
-    int mark_offset;
-    const gchar *mark_name;
-} Espin;
-
-struct _Econtext {
-    volatile ContextState state;
-
-    gchar *text;
-    gsize text_offset;
-    gsize text_len;
-    gchar *next_mark;
-
-    Espin queue[SPIN_QUEUE_SIZE];
-    Espin *in;
-    Espin *out;
-
-    GSList *process_chunk;
 
     volatile gint rate;
     volatile gint pitch;
@@ -80,11 +49,6 @@ struct _Econtext {
     GstElement *emitter;
     GstBus *bus;
 };
-
-static inline void spinning (Espin * base, Espin ** i) {
-    if (++(*i) == base + SPIN_QUEUE_SIZE)
-        *i = base;
-}
 
 static void post_message (Econtext * self, GstStructure * data) {
     if (!self->bus)
@@ -116,10 +80,9 @@ static void init ();
 static void process_push (Econtext *, gboolean);
 static void process_pop (Econtext *);
 
-static GThread *process_tid = NULL;
-static GMutex *process_lock = NULL;
-static GCond *process_cond = NULL;
-static GSList *process_queue = NULL;
+static GCond *synth_cond = NULL;
+static GMutex *synth_lock = NULL;
+static GSList *synth_queue = NULL;
 
 static gint espeak_sample_rate = 0;
 static gint espeak_buffer_size = 0;
@@ -131,22 +94,6 @@ Econtext *espeak_new (GstElement * emitter) {
     init ();
 
     Econtext *self = g_new0 (Econtext, 1);
-    gint i;
-
-    for (i = SPIN_QUEUE_SIZE; i--;) {
-        Espin *spin = &self->queue[i];
-
-        spin->context = self;
-        spin->state = IN;
-        spin->sound = g_byte_array_new ();
-        spin->events = g_array_new (FALSE, FALSE, sizeof (espeak_EVENT));
-    }
-
-    self->in = self->queue;
-    self->out = self->queue;
-
-    self->process_chunk = g_slist_alloc ();
-    self->process_chunk->data = self;
 
     self->pitch = 50;
     self->rate = 170;
@@ -154,6 +101,7 @@ Econtext *espeak_new (GstElement * emitter) {
     self->gap = 0;
     self->track = ESPEAK_TRACK_NONE;
 
+    spin->events = g_array_new (FALSE, FALSE, sizeof (espeak_EVENT));
     self->emitter = emitter;
     gst_object_ref (self->emitter);
     self->bus = NULL;
@@ -163,20 +111,29 @@ Econtext *espeak_new (GstElement * emitter) {
     return self;
 }
 
+void espeak_reset (Econtext * self) {
+    g_mutex_lock (synth_lock);
+
+    g_list_free_full (self->last_buffer, g_free);
+    self->first_buffer = NULL;
+    self->last_buffer = NULL;
+
+    if (self->text) {
+        g_free (self->text);
+        self->text = NULL;
+    }
+
+    self->next_mark = NULL;
+
+    g_mutex_unlock (synth_lock);
+}
+
 void espeak_unref (Econtext * self) {
     GST_DEBUG ("[%p]", self);
 
     espeak_reset (self);
 
-    gint i;
-
-    for (i = SPIN_QUEUE_SIZE; i--;) {
-        g_byte_array_free (self->queue[i].sound, TRUE);
-        g_array_free (self->queue[i].events, TRUE);
-    }
-
-    g_slist_free (self->process_chunk);
-
+    g_array_free (self->events, TRUE);
     gst_object_unref (self->bus);
     gst_object_unref (self->emitter);
 
@@ -193,13 +150,16 @@ void espeak_in (Econtext * self, const gchar * text) {
         return;
 
     self->text = g_strdup (text);
-    self->text_offset = 0;
-    self->text_len = strlen (text);
+    g_array_set_size (self->events, 0);
+    self->sound_offset = 0;
+    self->audio_position = 0;
+    self->events_pos = 0;
 
     process_push (self, TRUE);
 }
 
 GstBuffer *play (Econtext * self, Espin * spin, gsize size_to_play) {
+
     inline gsize whole (Espin * spin, gsize size_to_play) {
         for (;; ++spin->events_pos) {
             espeak_EVENT *i = &g_array_index (spin->events, espeak_EVENT,
@@ -244,8 +204,6 @@ GstBuffer *play (Econtext * self, Espin * spin, gsize size_to_play) {
         return sample_offset - spin->sound_offset;
     }
 
-    g_atomic_int_set (&spin->state, PLAY);
-
     switch (g_atomic_int_get (&self->track)) {
     case ESPEAK_TRACK_WORD:
     case ESPEAK_TRACK_MARK:
@@ -287,7 +245,7 @@ GstBuffer *espeak_out (Econtext * self, gsize size_to_play) {
     GST_DEBUG ("[%p] size_to_play=%d", self, size_to_play);
 
     for (;;) {
-        g_mutex_lock (process_lock);
+        g_mutex_lock (synth_lock);
         for (;;) {
             if (g_atomic_int_get (&self->out->state) & (PLAY | OUT))
                 break;
@@ -296,13 +254,13 @@ GstBuffer *espeak_out (Econtext * self, gsize size_to_play) {
                     GST_DEBUG ("[%p] sesseion is closed", self);
                 else
                     GST_DEBUG ("[%p] nothing to play", self);
-                g_mutex_unlock (process_lock);
+                g_mutex_unlock (synth_lock);
                 return NULL;
             }
             GST_DEBUG ("[%p] wait for processed data", self);
-            g_cond_wait (process_cond, process_lock);
+            g_cond_wait (synth_cond, synth_lock);
         }
-        g_mutex_unlock (process_lock);
+        g_mutex_unlock (synth_lock);
 
         Espin *spin = self->out;
         gsize spin_size = spin->sound->len;
@@ -327,26 +285,135 @@ GstBuffer *espeak_out (Econtext * self, gsize size_to_play) {
     return NULL;
 }
 
-void espeak_reset (Econtext * self) {
-    process_pop (self);
+// espeak ----------------------------------------------------------------------
 
-    GstBuffer *buf;
-    while ((buf = espeak_out (self, espeak_buffer_size)) != NULL)
-        gst_buffer_unref (buf);
 
-    int i;
-    for (i = SPIN_QUEUE_SIZE; i--;)
-        g_atomic_int_set (&self->queue[i].state, IN);
-
-    if (self->text) {
-        g_free (self->text);
-        self->text = NULL;
-    }
-
-    self->next_mark = NULL;
+gint espeak_get_sample_rate () {
+    return espeak_sample_rate;
 }
 
-// espeak ----------------------------------------------------------------------
+gint espeak_get_buffer_size () {
+    return espeak_buffer_size;
+}
+
+GValueArray *espeak_get_voices () {
+    init ();
+    return g_value_array_copy (espeak_voices);
+}
+
+void espeak_set_pitch (Econtext * self, gint value) {
+    if (value == 0)
+        value = 50;
+    else
+        value = MIN (99, (value + 100) / 2);
+
+    g_atomic_int_set (&self->pitch, value);
+}
+
+void espeak_set_rate (Econtext * self, gint value) {
+    if (value == 0)
+        value = 170;
+    else if (value < 0)
+        value = MAX (80, value + 170);
+    else
+        value = 170 + value * 2;
+
+    g_atomic_int_set (&self->rate, value);
+}
+
+void espeak_set_voice (Econtext * self, const gchar * value) {
+    g_atomic_pointer_set (&self->voice, value);
+}
+
+void espeak_set_gap (Econtext * self, guint value) {
+    g_atomic_int_set (&self->gap, value);
+}
+
+void espeak_set_track (Econtext * self, guint value) {
+    g_atomic_int_set (&self->track, value);
+}
+
+
+
+
+
+static gpointer synth_thread (gpointer data) {
+    for (;;) {
+        g_mutex_lock (synth_lock);
+
+        while (synth_queue == NULL)
+            g_cond_wait (synth_cond, synth_lock);
+        Econtext *context = (Econtext *) synth_queue->data;
+        synth_queue = g_slist_remove_link (synth_queue, synth_queue);
+
+        espeak_SetParameter (espeakPITCH, context->pitch, 0);
+        espeak_SetParameter (espeakRATE, context->rate, 0);
+        espeak_SetVoiceByName ((gchar *) context->voice);
+        espeak_SetParameter (espeakWORDGAP, context->gap, 0);
+        gchar *text = context->text;
+        context->text = NULL;
+        gint track = context->track;
+
+        g_mutex_unlock (synth_lock);
+
+
+
+
+
+
+
+
+
+
+
+
+
+        gint flags = espeakCHARS_UTF8;
+        if (track == ESPEAK_TRACK_MARK)
+            flags |= espeakSSML;
+
+        gint text_len = strlen (text);
+        espeak_Synth (text, text_len + 1, 0, POS_CHARACTER, 0, flags,
+                NULL, spin);
+
+        espeak_EVENT last_event = { espeakEVENT_LIST_TERMINATED };
+        last_event.sample = spin->sound->len / BYTES_PER_SAMPLE;
+        g_array_append_val (spin->events, last_event);
+
+        g_free(text);
+
+
+
+
+
+
+
+
+
+
+
+        g_cond_broadcast (synth_cond);
+    }
+
+    g_mutex_unlock (synth_lock);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    return NULL;
+}
 
 static gint synth_cb (short *data, int numsamples, espeak_EVENT * events) {
     if (data == NULL)
@@ -394,164 +461,27 @@ static gint synth_cb (short *data, int numsamples, espeak_EVENT * events) {
     return 0;
 }
 
-static void synth (Econtext * self, Espin * spin) {
-    g_byte_array_set_size (spin->sound, 0);
-    g_array_set_size (spin->events, 0);
-    spin->sound_offset = 0;
-    spin->audio_position = 0;
-    spin->events_pos = 0;
-    spin->mark_offset = 0;
-    spin->mark_name = NULL;
-    spin->last_word = -1;
 
-    espeak_SetParameter (espeakPITCH, g_atomic_int_get (&self->pitch), 0);
-    espeak_SetParameter (espeakRATE, g_atomic_int_get (&self->rate), 0);
-    espeak_SetVoiceByName ((gchar *) g_atomic_pointer_get (&self->voice));
-    espeak_SetParameter (espeakWORDGAP, g_atomic_int_get (&self->gap), 0);
-
-    gint track = g_atomic_int_get (&self->track);
-
-    gint flags = espeakCHARS_UTF8;
-    if (track == ESPEAK_TRACK_MARK)
-        flags |= espeakSSML;
-
-    GST_DEBUG ("[%p] text_offset=%zd", self, self->text_offset);
-
-    espeak_Synth (self->text, self->text_len + 1, 0, POS_CHARACTER, 0, flags,
-            NULL, spin);
-
-    if (spin->events->len) {
-        int text_offset = g_array_index (spin->events, espeak_EVENT,
-                spin->events->len - 1).text_position + 1;
-        self->text_offset = g_utf8_offset_to_pointer (self->text, text_offset)
-                - self->text;
-    }
-
-    espeak_EVENT last_event = { espeakEVENT_LIST_TERMINATED };
-    last_event.sample = spin->sound->len / BYTES_PER_SAMPLE;
-    g_array_append_val (spin->events, last_event);
-}
-
-gint espeak_get_sample_rate () {
-    return espeak_sample_rate;
-}
-
-gint espeak_get_buffer_size () {
-    return espeak_buffer_size;
-}
-
-GValueArray *espeak_get_voices () {
-    init ();
-    return g_value_array_copy (espeak_voices);
-}
-
-void espeak_set_pitch (Econtext * self, gint value) {
-    if (value == 0)
-        value = 50;
-    else
-        value = MIN (99, (value + 100) / 2);
-
-    g_atomic_int_set (&self->pitch, value);
-}
-
-void espeak_set_rate (Econtext * self, gint value) {
-    if (value == 0)
-        value = 170;
-    else if (value < 0)
-        value = MAX (80, value + 170);
-    else
-        value = 170 + value * 2;
-
-    g_atomic_int_set (&self->rate, value);
-}
-
-void espeak_set_voice (Econtext * self, const gchar * value) {
-    g_atomic_pointer_set (&self->voice, value);
-}
-
-void espeak_set_gap (Econtext * self, guint value) {
-    g_atomic_int_set (&self->gap, value);
-}
-
-void espeak_set_track (Econtext * self, guint value) {
-    g_atomic_int_set (&self->track, value);
-}
-
-// process ----------------------------------------------------------------------
-
-static gpointer process (gpointer data) {
-    g_mutex_lock (process_lock);
-
-    for (;;) {
-        while (process_queue == NULL)
-            g_cond_wait (process_cond, process_lock);
-
-        while (process_queue) {
-            Econtext *context = (Econtext *) process_queue->data;
-            Espin *spin = context->in;
-
-            process_queue = g_slist_remove_link (process_queue, process_queue);
-
-            if (context->state == CLOSE) {
-                GST_DEBUG ("[%p] session is closed", context);
-                continue;
-            }
-
-            GST_DEBUG ("[%p] context->text_offset=%d context->text_len=%d",
-                    context, context->text_offset, context->text_len);
-
-            if (context->text_offset >= context->text_len) {
-                GST_DEBUG ("[%p] end of text to process", context);
-                context->state &= ~INPROCESS;
-            } else {
-                synth (context, spin);
-                g_atomic_int_set (&spin->state, OUT);
-                spinning (context->queue, &context->in);
-
-                if (g_atomic_int_get (&context->in->state) == IN) {
-                    GST_DEBUG ("[%p] continue to process data", context);
-                    process_queue = g_slist_concat (process_queue,
-                            context->process_chunk);
-                } else {
-                    GST_DEBUG ("[%p] pause to process data", context);
-                    context->state &= ~INPROCESS;
-                }
-            }
-        }
-
-        g_cond_broadcast (process_cond);
-    }
-
-    g_mutex_unlock (process_lock);
-
-    return NULL;
-}
 
 static void process_push (Econtext * context, gboolean force_in) {
     GST_DEBUG ("[%p] lock", context);
-    g_mutex_lock (process_lock);
+    g_mutex_lock (synth_lock);
 
-    if (context->state == CLOSE && !force_in)
-        GST_DEBUG ("[%p] state=%d", context, context->state);
-    else if (context->state != INPROCESS) {
-        context->state = INPROCESS;
-        process_queue = g_slist_concat (process_queue, context->process_chunk);
-        g_cond_broadcast (process_cond);
-    }
+    synth_queue = g_slist_concat (synth_queue, context);
+    g_cond_broadcast (synth_cond);
 
-    g_mutex_unlock (process_lock);
+    g_mutex_unlock (synth_lock);
     GST_DEBUG ("[%p] unlock", context);
 }
 
 static void process_pop (Econtext * context) {
     GST_DEBUG ("[%p] lock", context);
-    g_mutex_lock (process_lock);
+    g_mutex_lock (synth_lock);
 
-    process_queue = g_slist_remove_link (process_queue, context->process_chunk);
-    context->state = CLOSE;
-    g_cond_broadcast (process_cond);
+    synth_queue = g_slist_remove_link (synth_queue, context->process_chunk);
+    g_cond_broadcast (synth_cond);
 
-    g_mutex_unlock (process_lock);
+    g_mutex_unlock (synth_lock);
     GST_DEBUG ("[%p] unlock", context);
 }
 
@@ -563,9 +493,9 @@ static void init () {
     if (initialized == 0) {
         ++initialized;
 
-        process_lock = g_mutex_new ();
-        process_cond = g_cond_new ();
-        process_tid = g_thread_create (process, NULL, FALSE, NULL);
+        synth_lock = g_mutex_new ();
+        synth_cond = g_cond_new ();
+        g_thread_create (synth_thread, NULL, FALSE, NULL);
 
         espeak_sample_rate = espeak_Initialize (AUDIO_OUTPUT_SYNCHRONOUS,
                 SYNC_BUFFER_SIZE_MS, NULL, 0);
