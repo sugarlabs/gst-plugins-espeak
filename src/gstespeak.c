@@ -128,6 +128,11 @@ static void gst_espeak_class_init (GstEspeakClass * klass) {
     gst_element_class_add_pad_template (element_class,
             gst_static_pad_template_get (&src_factory));
 
+    gst_element_class_set_metadata (element_class,
+            "eSpeak as a sound source",
+            "Source/Audio",
+            "Use eSpeak library as a sound source for GStreamer",
+            "Aleksey Lim <alsroot@sugarlabs.org>");
 }
 
 /* initialize the new element
