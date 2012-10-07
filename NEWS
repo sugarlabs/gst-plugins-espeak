@@ -1,5 +1,11 @@
+v0.4.0 2012-10-07
+-----------------
+* Port to GStreamer 1.0 API (Daniel Narvaez)
+  For GStreamer 0.10.x, stay on v0.3.5x versions.
+* Avoid using deprecated Glib API
+
 v0.3.5 2010-11-30
-~~~~~~~~~~~~~~~~~
+-----------------
 * Do not seeak for marks in original text, just store them at the begining
   of original text.
 * Set GST_BUFFER_OFFSET to fix critical message (Guillaume Dorchies)
@@ -8,32 +14,32 @@ v0.3.5 2010-11-30
 * Pass source files via indent, add HACKING file.
 
 v0.3.4 2010-04-11
-~~~~~~~~~~~~~~~~~
+-----------------
 * Add '-no-undefined' LDFLAGS (Yaakov Selkowitz)
 * Export the only symbol that plugins must export (Yaakov Selkowitz)
 
 0.3.3
-~~~~~
+-----
 * Support utf-8 source strings #816
 
 0.3.1
-~~~~~
+-----
 * Build against gstreamer-0.10.12
 * Setup GST_BUFFER_TIMESTAMP to generate sound properly in gstreamer-0.10.22
 
 0.3
-~~~
+---
 * Remove gio dependency
 * Support gstreamer-0.10.14
 * A bit more workaround code to catch misplaced marks
 
 0.2
-~~~
+---
 * Add mark events
 * Use speech-dispatcher's format for properties
 * Add word notification events
 * Setup CAPS and do not use WAV header
 
 0.1
-~~~
+---
 * Initial implementation

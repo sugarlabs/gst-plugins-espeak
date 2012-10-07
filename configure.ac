@@ -1,4 +1,4 @@
-AC_INIT([gst-plugins-espeak], [0.3.5])
+AC_INIT([gst-plugins-espeak], [0.4.0])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([configure.ac])
 AM_INIT_AUTOMAKE([foreign])
