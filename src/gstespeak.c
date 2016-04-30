@@ -230,10 +230,10 @@ gst_espeak_get_property (GObject * object, guint prop_id,
         g_value_set_string (value, self->text);
         break;
     case PROP_PITCH:
-        g_value_set_uint (value, self->pitch);
+        g_value_set_int (value, self->pitch);
         break;
     case PROP_RATE:
-        g_value_set_uint (value, self->rate);
+        g_value_set_int (value, self->rate);
         break;
     case PROP_VOICE:
         g_value_set_string (value, self->voice);
