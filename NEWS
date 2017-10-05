@@ -1,3 +1,8 @@
+v0.5.0 2017-10-05
+-----------------
+* Port to espeak-ng 1.49, but keep compatibile with espeak 1.48 (James Cameron)
+* Fix data type of pitch and rate get property (Malcolm Jones)
+
 v0.4.0 2012-10-07
 -----------------
 * Port to GStreamer 1.0 API (Daniel Narvaez)
