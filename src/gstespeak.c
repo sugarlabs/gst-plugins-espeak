@@ -106,7 +106,7 @@ static void gst_espeak_class_init (GstEspeakClass * klass) {
                     G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property (gobject_class, PROP_VOICE,
             g_param_spec_string ("voice", "Current voice",
-                    "Current voice", ESPEAK_DEFAULT_VOICE,
+                    "Current voice", espeak_default_voice (),
                     G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
     g_object_class_install_property (gobject_class, PROP_GAP,
             g_param_spec_uint ("gap", "Gap",
@@ -144,7 +144,7 @@ static void gst_espeak_init (GstEspeak * self) {
     self->text = NULL;
     self->pitch = 0;
     self->rate = 0;
-    self->voice = g_strdup (ESPEAK_DEFAULT_VOICE);
+    self->voice = g_strdup (espeak_default_voice ());
     self->voices = espeak_get_voices ();
     self->speak = espeak_new (GST_ELEMENT (self));
 

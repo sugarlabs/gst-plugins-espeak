@@ -127,6 +127,14 @@ static GValueArray *espeak_voices = NULL;
 
 // -----------------------------------------------------------------------------
 
+const char* espeak_default_voice() {
+#if ESPEAK_API_REVISION < 10
+    return "default";
+#else
+    return "english";
+#endif
+}
+
 Econtext *espeak_new (GstElement * emitter) {
     init ();
 
@@ -150,7 +158,7 @@ Econtext *espeak_new (GstElement * emitter) {
 
     self->pitch = 50;
     self->rate = 170;
-    self->voice = ESPEAK_DEFAULT_VOICE;
+    self->voice = espeak_default_voice();
     self->gap = 0;
     self->track = ESPEAK_TRACK_NONE;
 

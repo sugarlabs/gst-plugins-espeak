@@ -18,8 +18,6 @@
 #ifndef ESPEAK_H
 #define ESPEAK_H
 
-#define ESPEAK_DEFAULT_VOICE  "default"
-
 #define ESPEAK_TRACK_NONE 0
 #define ESPEAK_TRACK_WORD 1
 #define ESPEAK_TRACK_MARK 2
@@ -27,6 +25,7 @@
 struct _Econtext;
 typedef struct _Econtext Econtext;
 
+const char* espeak_default_voice();
 Econtext *espeak_new (GstElement *);
 void espeak_unref (Econtext *);
 
