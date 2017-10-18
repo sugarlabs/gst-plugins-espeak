@@ -23,7 +23,7 @@
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch-0.10 espeak text="Hello world" ! autoaudiosink
+ * gst-launch-1.0 espeak text="Hello world" ! autoaudiosink
  * ]|
  * </refsect2>
  */
