@@ -277,7 +277,7 @@ static gboolean gst_espeak_start (GstBaseSrc * self_) {
     GST_DEBUG ("gst_espeak_start");
     GstEspeak *self = GST_ESPEAK (self_);
     espeak_in (self->speak, self->text);
-    gst_pad_set_caps (GST_BASE_SRC_PAD (self), self->caps);
+    gst_base_src_set_caps (self_, self->caps);
     return TRUE;
 }
 
