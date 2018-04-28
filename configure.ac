@@ -42,7 +42,7 @@ GST_ALL_LDFLAGS="-no-undefined"
 AC_SUBST(GST_ALL_LDFLAGS)
 
 dnl set proper LDFLAGS for plugins
-GST_PLUGIN_LDFLAGS="-module -avoid-version -export-symbols-regex '^_*gst_plugin_desc\$\$' $GST_ALL_LDFLAGS"
+GST_PLUGIN_LDFLAGS="-module -avoid-version $GST_ALL_LDFLAGS"
 AC_SUBST(GST_PLUGIN_LDFLAGS)
 
 AC_OUTPUT(Makefile m4/Makefile src/Makefile)
