@@ -19,15 +19,7 @@ if test "x$have_audio" = "xno"; then
     AC_CHECK_LIB(gstaudio-$GST_MAJORMINOR, gst_base_audio_src_get_type,, AC_MSG_ERROR())
 fi
 
-dnl Check for 0sugar support
-if test "${ESPEAK_PREFIX}"; then
-    ESPEAK_CFLAGS="-I${ESPEAK_PREFIX}/include"
-    ESPEAK_LIBS="-L${ESPEAK_PREFIX}/lib -lespeak"
-    AC_SUBST(ESPEAK_CFLAGS)
-    AC_SUBST(ESPEAK_LIBS)
-else
-    AC_CHECK_LIB(espeak, espeak_Initialize,, AC_MSG_ERROR())
-fi
+AC_CHECK_LIB(espeak, espeak_Initialize,, AC_MSG_ERROR())
 
 if test "x${prefix}" = "x$HOME"; then
   plugindir="$HOME/.gstreamer-$GST_MAJORMINOR/plugins"
