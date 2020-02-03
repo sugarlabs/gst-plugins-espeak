@@ -19,7 +19,7 @@ if test "x$have_audio" = "xno"; then
     AC_CHECK_LIB(gstaudio-$GST_MAJORMINOR, gst_base_audio_src_get_type,, AC_MSG_ERROR())
 fi
 
-AC_CHECK_LIB(espeak, espeak_Initialize,, AC_MSG_ERROR())
+AC_CHECK_LIB(espeak-ng, espeak_Initialize,, AC_MSG_ERROR())
 
 if test "x${prefix}" = "x$HOME"; then
   plugindir="$HOME/.gstreamer-$GST_MAJORMINOR/plugins"
