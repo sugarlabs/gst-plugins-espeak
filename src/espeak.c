@@ -21,7 +21,7 @@
 #include <string.h>
 #include <glib.h>
 #include <gst/gst.h>
-#include <espeak/speak_lib.h>
+#include <espeak-ng/speak_lib.h>
 
 #define SYNC_BUFFER_SIZE_MS 200
 #define BYTES_PER_SAMPLE 2
