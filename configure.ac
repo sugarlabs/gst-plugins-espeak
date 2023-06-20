@@ -2,13 +2,13 @@ AC_INIT([gst-plugins-espeak], [0.5.0])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([configure.ac])
 AM_INIT_AUTOMAKE([foreign])
-AM_CONFIG_HEADER(config.h)
+AC_CONFIG_HEADERS(config.h)
 
 AM_MAINTAINER_MODE
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 AC_PROG_CC
-AC_PROG_LIBTOOL
+LT_INIT
 
 GST_MAJORMINOR=1.0
 
@@ -37,4 +37,5 @@ dnl set proper LDFLAGS for plugins
 GST_PLUGIN_LDFLAGS="-module -avoid-version $GST_ALL_LDFLAGS"
 AC_SUBST(GST_PLUGIN_LDFLAGS)
 
-AC_OUTPUT(Makefile m4/Makefile src/Makefile)
+AC_CONFIG_FILES([Makefile m4/Makefile src/Makefile])
+AC_OUTPUT
