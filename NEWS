@@ -1,3 +1,15 @@
+v0.6.0 2023-06-20
+-----------------
+* Upgrage example launch line to Gstreamer 1.0 (James Cameron)
+* Fix an event misordering bug (James Cameron)
+* Stop using -export-symbols-regex (Adrian Bunk)
+* Add copyright (Aleskey Lim)
+* Remove 0sugar support (James Cameron)
+* Port to espeak-ng - configure.ac (James Cameron)
+* Fix compile on Fedora (Peter Robinson)
+* Update and rename README to README.md (Ibiam Chihurumnaya)
+* Run autoupdate (Ibiam Chihurumnaya)
+
 v0.5.0 2017-10-05
 -----------------
 * Port to espeak-ng 1.49, but keep compatibile with espeak 1.48 (James Cameron)
